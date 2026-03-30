@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Header from "../components/header";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Admissions",
@@ -106,6 +107,7 @@ type StudyCardProps = {
   subtext: string;
   imageSrc: string;
   buttonText: string;
+  href?: string;
 };
 
 function StudyCard({
@@ -114,6 +116,7 @@ function StudyCard({
   subtext,
   imageSrc,
   buttonText,
+  href,
 }: StudyCardProps) {
   const parts = subtext.split("HOW TO APPLY");
   const before = parts[0] ?? "";
@@ -138,12 +141,21 @@ function StudyCard({
         </div>
 
         <div className="mt-6 flex justify-center">
-          <button
-            type="button"
-            className="h-[34px] w-full max-w-[320px] rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]"
-          >
-            {buttonText}
-          </button>
+          {href ? (
+            <Link
+              href={href}
+              className="flex h-[34px] w-full max-w-[320px] items-center justify-center rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]"
+            >
+              {buttonText}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="h-[34px] w-full max-w-[320px] rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]"
+            >
+              {buttonText}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -209,6 +221,7 @@ export default function AdmissionsPage() {
               subtext="Find out HOW TO APPLY for undergraduate programs"
               imageSrc="/assets/exam.jpg"
               buttonText="APPLY"
+              href="/admissions/register"
             />
             <StudyCard
               title="Graduate Study"

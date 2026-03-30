@@ -1,4 +1,8 @@
+"use client";
+
 import Header from "./components/header";
+import { useRouter } from "next/navigation";
+import React from "react";
 
 
 function PortalTile({
@@ -108,6 +112,13 @@ function HelpButton() {
 }
 
 export default function Home() {
+  const router = useRouter();
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    router.push("/admissions/my-admissions");
+  };
+
   return (
     <div className="min-h-screen bg-white font-[Arial,Helvetica,sans-serif] text-[#1a1a1a] min-w-screen">
      <Header/>
@@ -147,7 +158,7 @@ export default function Home() {
                   <div className="text-[18px] text-[#2a66a7]">
                     Login to your account
                   </div>
-                  <form className="mt-4 flex flex-col gap-6">
+                  <form onSubmit={handleLogin} className="mt-4 flex flex-col gap-6">
                   <InputWithIcon
                     icon={
                       <svg
@@ -206,7 +217,7 @@ export default function Home() {
                     defaultValue=""
                   />
                   <button
-                    type="button"
+                    type="submit"
                     className="h-[40px] rounded bg-[#3f79b5] text-[18px] text-white hover:bg-[#356e9f]"
                   >
                     Login
