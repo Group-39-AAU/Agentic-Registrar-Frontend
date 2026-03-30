@@ -9,8 +9,12 @@ const openSans = Open_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "AAU | Addis Ababa University",
-  description: "Addis Ababa University is a public university in Addis Ababa, Ethiopia. It is the oldest and largest university in Ethiopia.",
+  title: {
+    default: "Home | Addis Ababa University",
+    template: "%s | Addis Ababa University",
+  },
+  description:
+    "Addis Ababa University is a public university in Addis Ababa, Ethiopia. It is the oldest and largest university in Ethiopia.",
 };
 
 export default function RootLayout({
