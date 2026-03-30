@@ -45,53 +45,37 @@ export default function Header() {
     <div className="mx-auto flex h-full w-full max-w-[1180px] items-between px-5">
       <AAULogoSmall />
 
-      <nav className="ml-auto flex items-center gap-0">
+      <nav className="ml-auto flex items-center gap-6">
+        <Link
+          href="#"
+          className="text-[12px] font-semibold uppercase tracking-wide text-[#384457] hover:text-[#2f76b7]"
+        >
+          HOW TO APPLY
+        </Link>
+        <div className="flex items-center gap-1 cursor-pointer group">
+          <span className="text-[12px] font-semibold uppercase tracking-wide text-[#384457] group-hover:text-[#2f76b7]">
+            UNDERGRADUATE
+          </span>
+          <ChevronDown />
+        </div>
+        <div className="flex items-center gap-1 cursor-pointer group">
+          <span className="text-[12px] font-semibold uppercase tracking-wide text-[#384457] group-hover:text-[#2f76b7]">
+            GRADUATE
+          </span>
+          <ChevronDown />
+        </div>
+        <Link
+          href="#"
+          className="text-[12px] font-semibold uppercase tracking-wide text-[#384457] hover:text-[#2f76b7]"
+        >
+          FAQs
+        </Link>
         <Link
           href="/"
-          className="flex items-center gap-0 px-2 py-2 text-base font-normal text-[#384457] hover:text-[#2f76b7]"
+          className="ml-2 flex h-[34px] w-[80px] items-center justify-center rounded-md border border-[#e04b4b] text-[12px] font-bold text-[#384457] transition-colors hover:bg-[#e04b4b] hover:text-white"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 576 512"
-            className="h-4 w-4 text-[#384457]"
-            fill="currentColor"
-          >
-            <path d="M280.37 148.26L96 300.11V464a16 16 0 0 0 16 16l112.06-.29a16 16 0 0 0 15.92-16V368a16 16 0 0 1 16-16h64a16 16 0 0 1 16 16v95.64a16 16 0 0 0 16 16.05L464 480a16 16 0 0 0 16-16V300L295.67 148.26a12.19 12.19 0 0 0-15.3 0zM571.6 251.47L488 182.56V44.05a12 12 0 0 0-12-12h-56a12 12 0 0 0-12 12v72.61L318.47 43a48 48 0 0 0-61 0L4.34 251.47a12 12 0 0 0-1.6 16.9l25.5 31A12 12 0 0 0 45.15 301l235.22-193.74a12.19 12.19 0 0 1 15.3 0L530.9 301a12 12 0 0 0 16.9-1.6l25.5-31a12 12 0 0 0-1.7-16.93z" />
-          </svg>
-          <span className="ml-2">Home</span>
+          LOGIN
         </Link>
-        <a
-          href="#"
-          className="px-3 py-2 text-base font-normal text-[#384457] hover:text-[#2f76b7]"
-        >
-          Announcement
-        </a>
-        <AdmissionDropdown />
-        <a
-          href="#"
-          className="flex items-center gap-1 px-2 py-2 text-base font-normal text-[#384457] hover:text-[#2f76b7]"
-        >
-          <span>Exams</span>
-          <ChevronDown />
-        </a>
-        <a
-          href="#"
-          className="px-2 py-2 text-base font-normal text-[#384457] hover:text-[#2f76b7]"
-        >
-          Freshman
-        </a>
-        <a
-          href="#"
-          className="px-2 py-2 text-base font-normal text-[#384457] hover:text-[#2f76b7]"
-        >
-          Programs
-        </a>
-        <a
-          href="#"
-          className="px-2 py-2 text-base font-normal text-[#384457] hover:text-[#2f76b7]"
-        >
-          Calendar
-        </a>
       </nav>
     </div>
   </header>

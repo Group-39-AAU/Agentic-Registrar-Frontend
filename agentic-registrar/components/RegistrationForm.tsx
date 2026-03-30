@@ -8,10 +8,7 @@ export default function RegistrationForm() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     firstName: "",
-    middleName: "",
-    lastName: "",
-    gender: "",
-    dob: "",
+    fatherName: "",
     email: "",
     phone: "",
     password: "",
@@ -20,9 +17,7 @@ export default function RegistrationForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate registration
     console.log("Registering:", formData);
-    // Redirect to admission application form
     router.push("/admissions/apply");
   };
 
@@ -34,100 +29,70 @@ export default function RegistrationForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        <FormInput
-          label="First Name"
-          name="firstName"
-          placeholder="First Name"
-          required
-          onChange={handleChange}
-        />
-        <FormInput
-          label="Middle Name"
-          name="middleName"
-          placeholder="Middle Name"
-          required
-          onChange={handleChange}
-        />
-        <FormInput
-          label="Last Name"
-          name="lastName"
-          placeholder="Last Name"
-          required
-          onChange={handleChange}
-        />
-      </div>
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+        {/* Left Column */}
+        <div className="flex flex-col gap-5">
+          <FormInput
+            label="First Name"
+            name="firstName"
+            required
+            onChange={handleChange}
+          />
+          <FormInput
+            label="Father Name"
+            name="fatherName"
+            required
+            onChange={handleChange}
+          />
+          <FormInput
+            label="Username (Functional Email)"
+            name="email"
+            type="email"
+            required
+            onChange={handleChange}
+          />
+          <FormInput
+            label="Telephone"
+            name="phone"
+            type="tel"
+            required
+            onChange={handleChange}
+          />
+        </div>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <FormSelect
-          label="Gender"
-          name="gender"
-          required
-          options={[
-            { value: "male", label: "Male" },
-            { value: "female", label: "Female" },
-          ]}
-          onChange={handleChange}
-        />
-        <FormInput
-          label="Date of Birth"
-          name="dob"
-          type="date"
-          required
-          onChange={handleChange}
-        />
-      </div>
+        {/* Right Column */}
+        <div className="flex flex-col gap-5">
+          <FormInput
+            label="Create a Password"
+            name="password"
+            type="password"
+            required
+            onChange={handleChange}
+          />
+          <FormInput
+            label="Confirm your password"
+            name="confirmPassword"
+            type="password"
+            required
+            onChange={handleChange}
+          />
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <FormInput
-          label="Email (Username)"
-          name="email"
-          type="email"
-          placeholder="example@email.com"
-          required
-          onChange={handleChange}
-        />
-        <FormInput
-          label="Phone Number"
-          name="phone"
-          type="tel"
-          placeholder="+251 ..."
-          required
-          onChange={handleChange}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <FormInput
-          label="Password"
-          name="password"
-          type="password"
-          required
-          onChange={handleChange}
-        />
-        <FormInput
-          label="Confirm Password"
-          name="confirmPassword"
-          type="password"
-          required
-          onChange={handleChange}
-        />
-      </div>
-
-      <div className="mt-4 flex flex-col gap-4">
-        <button
-          type="submit"
-          className="h-[44px] w-full rounded-md bg-[#3f79b5] text-[16px] font-semibold text-white shadow-md transition-colors hover:bg-[#356e9f]"
-        >
-          Create Account
-        </button>
-        <p className="text-center text-[13px] text-[#5a5a5a]">
-          Already have an account?{" "}
-          <a href="/" className="font-semibold text-[#2f76b7] hover:underline">
-            Login here
-          </a>
-        </p>
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <button
+              type="submit"
+              className="h-[40px] w-full max-w-[200px] rounded-[4px] bg-[#3f79b5] text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-[#356e9f] uppercase tracking-wide"
+            >
+              CREATE ACCOUNT
+            </button>
+            <a
+              href="/"
+              className="text-[12px] text-[#5a5a5a] underline hover:text-[#2f76b7]"
+            >
+              Already have an applicant account?
+            </a>
+          </div>
+        </div>
       </div>
     </form>
   );
