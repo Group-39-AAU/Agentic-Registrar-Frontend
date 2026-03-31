@@ -124,20 +124,20 @@ function StudyCard({
       <img
         src={imageSrc}
         alt={title}
-        className="h-[165px] w-full object-cover"
+        className="h-[500px] w-full object-cover"
       />
       <div className="px-6 pb-7 pt-6">
-        <div className="text-[18px] font-bold text-[#1a1a1a]">{title}</div>
-        <div className="mt-2 text-[13px] font-semibold text-[#2f76b7]">
+        <div className="text-[30px] font-bold text-[#1a1a1a]">{title}</div>
+        <div className="mt-2 text-[18px] font-semibold text-[#2f76b7]">
           {headline}
         </div>
-        <div className="mt-3 text-[13px] text-[#3a3a3a]">
+        <div className="mt-3 text-[18px] text-[#3a3a3a]">
           {before}
           <span className="font-bold text-[#2f76b7]">HOW TO APPLY</span>
           {after}
         </div>
 
-        <div className="mt-6 flex justify-center">
+        <div className="mt-10 flex justify-center">
           <button
             type="button"
             className="h-[34px] w-full max-w-[320px] rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]"
@@ -185,10 +185,10 @@ export default function AdmissionsPage() {
     <div className="min-h-screen bg-white font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
       <Header/>
 
-      <main className="pt-[64px]">
-        <section className="relative h-[min(42vw,320px)] min-h-[200px]">
+      <main className="">
+        <section className="relative h-[50rem]">
           <img
-            src="/assets/Admission.jpg"
+            src="https://admission.aau.edu.et/AAU/coursel-image-2.jpg"
             alt="Addis Ababa University archway"
             className="absolute inset-0 h-full w-full object-cover object-center"
           />
@@ -201,20 +201,20 @@ export default function AdmissionsPage() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-[1120px] px-5 pb-16 pt-10">
+        <section className="mx-auto w-full px-5 pb-16 pt-10">
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <StudyCard
               title="Undergraduate Study"
               headline="Find out what undergraduate programs we offer"
               subtext="Find out HOW TO APPLY for undergraduate programs"
-              imageSrc="/assets/exam.jpg"
+              imageSrc="/assets/ug.jpg"
               buttonText="APPLY"
             />
             <StudyCard
               title="Graduate Study"
               headline="Find out what graduate programs we offer"
               subtext="Find out HOW TO APPLY for graduate programs"
-              imageSrc="/assets/Alumni%20.jpg"
+              imageSrc="/assets/grad.jpeg"
               buttonText="APPLY"
             />
           </div>

@@ -22,7 +22,7 @@ export default function MyAdmissionsPage() {
 
         <div className="mt-10 rounded-lg border border-dashed border-[#9bb0cc] bg-[#f8fafc] px-6 py-12 text-center text-[14px] text-[#5a5a5a]">
           No applications yet. Use{" "}
-          <span className="font-semibold text-[#2f76b7]">Admission → Start admission</span>{" "}
+          <span className="font-semibold text-[#2f76b7]">Admission → Apply for Admission</span>{" "}
           to begin.
         </div>
       </main>

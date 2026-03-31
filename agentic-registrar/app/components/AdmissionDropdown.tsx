@@ -35,14 +35,14 @@ export function AdmissionDropdown() {
             href="/admissions"
             className="block px-4 py-2.5 text-sm text-[#384457] hover:bg-gray-50 hover:text-[#2f76b7]"
           >
-            Start admission
+            Apply for Admission
           </Link>
           <Link
             role="menuitem"
             href="/admissions/my-admissions"
             className="block px-4 py-2.5 text-sm text-[#384457] hover:bg-gray-50 hover:text-[#2f76b7]"
           >
-            My admissions
+            Admission Status
           </Link>
         </div>
       </div>
