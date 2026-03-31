@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Header from "../components/header";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Admissions",
@@ -138,12 +139,12 @@ function StudyCard({
         </div>
 
         <div className="mt-10 flex justify-center">
-          <button
-            type="button"
+          <Link
+            href="/admissions/apply"
             className="h-[34px] w-full max-w-[320px] rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]"
           >
-            {buttonText}
-          </button>
+            <button type="button" className="w-full h-full">{buttonText}</button>
+          </Link>
         </div>
       </div>
     </div>
