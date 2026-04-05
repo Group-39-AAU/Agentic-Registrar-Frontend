@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Header from "../../components/header";
 import RegistrationForm from "../../../components/RegistrationForm";
 
 export const metadata: Metadata = {
@@ -10,8 +9,6 @@ export const metadata: Metadata = {
 export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-[#f1f5f9] font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
-      <Header />
-
       <main className="mx-auto w-full max-w-[1100px] px-5 pb-16 pt-[100px]">
         <h1 className="mb-8 text-center text-[20px] font-bold text-[#2f76b7]">
           Create Undergraduate Applicant Account

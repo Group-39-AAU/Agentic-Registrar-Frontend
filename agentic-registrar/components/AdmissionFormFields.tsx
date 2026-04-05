@@ -11,7 +11,6 @@ export function FormInput({ label, error, ...props }: InputProps) {
       <label className="text-[12px] font-medium text-[#4a4a4a]">{label}</label>
       <input
         {...props}
-        placeholder=""
         className={`h-[36px] rounded-md border ${
           error ? "border-red-500" : "border-gray-200"
         } bg-white px-3 text-[13px] text-[#2a2a2a] outline-none shadow-sm transition-all focus:border-[#2f76b7] focus:ring-1 focus:ring-[#2f76b7]/20`}

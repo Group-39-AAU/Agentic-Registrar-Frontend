@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Header from "../components/header";
 import Link from "next/link";
+import { AdmissionApplyLink } from "@/components/AdmissionApplyLink";
 
 export const metadata: Metadata = {
   title: "Admissions",
@@ -139,12 +139,9 @@ function StudyCard({
         </div>
 
         <div className="mt-10 flex justify-center">
-          <Link
-            href="/admissions/apply"
-            className="h-[34px] w-full max-w-[320px] rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]"
-          >
-            <button type="button" className="w-full h-full">{buttonText}</button>
-          </Link>
+          <AdmissionApplyLink className="flex h-[34px] w-full max-w-[320px] items-center justify-center rounded-[3px] bg-[#3f79b5] text-[11px] font-semibold text-white shadow-[0_3px_0_rgba(0,0,0,0.03)] transition-colors hover:bg-[#356e9f]">
+            {buttonText}
+          </AdmissionApplyLink>
         </div>
       </div>
     </div>
@@ -184,8 +181,6 @@ function FloatingChat() {
 export default function AdmissionsPage() {
   return (
     <div className="min-h-screen bg-white font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
-      <Header/>
-
       <main className="">
         <section className="relative h-[50rem]">
           <img
@@ -195,14 +190,14 @@ export default function AdmissionsPage() {
           />
           <div className="absolute inset-0 bg-black/20" />
 
-          <div className="relative mx-auto flex h-full max-w-[1180px] items-center justify-center px-5 py-10">
+          <div className="relative mx-auto flex h-full max-w-[1180px] flex-col items-center justify-center px-5 py-10">
             <h1 className="max-w-[920px] text-center text-[clamp(28px,5vw,44px)] font-semibold leading-tight text-white [font-family:Georgia,serif] drop-shadow-[0_3px_8px_rgba(0,0,0,0.45)]">
               Study at Addis Ababa University
             </h1>
           </div>
         </section>
 
-        <section className="mx-auto w-full px-5 pb-16 pt-10">
+        <section className="mx-auto w-full px-5 pb-16 pt-4">
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <StudyCard
               title="Undergraduate Study"
