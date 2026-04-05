@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Header from "../../components/header";
 import AdmissionApplicationForm from "../../../components/AdmissionApplicationForm";
 
 export const metadata: Metadata = {
@@ -10,8 +9,6 @@ export const metadata: Metadata = {
 export default function ApplyPage() {
   return (
     <div className="min-h-screen bg-[#f1f5f9] font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
-      <Header />
-
       <main className="mx-auto w-full max-w-[900px] px-5 pb-16 pt-[100px]">
         <div className="mb-6 flex items-center justify-between">
           <div>
