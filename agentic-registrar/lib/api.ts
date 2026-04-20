@@ -1,3 +1,5 @@
+import { admissionTerm } from "./types";
+
 const API_BASE =
   typeof window !== "undefined"
     ? (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
@@ -127,10 +129,25 @@ export type UndergraduateApplicationRecord = {
   sponsorship_type: string;
   stream: string;
   admission_number: string;
-  program_choice_1_id: string;
-  program_choice_2_id: string;
-  program_choice_3_id: string;
-  admission_term: string;
+  program_choice_1_id?: string;
+  program_choice_2_id?: string;
+  program_choice_3_id?: string;
+  program_choice_1?: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  program_choice_2?: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  program_choice_3?: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  admission_term: string | { id: string; term_name: string };
   current_status: string;
   final_decision: string;
   payment_status: string;
@@ -158,7 +175,16 @@ export async function fetchUndergraduateApplicationById(
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data);
-  return data as UndergraduateApplicationRecord;
+  const raw =
+    Array.isArray(data) && data.length > 0
+      ? data[0]
+      : data && typeof data === "object" && Array.isArray((data as { items?: unknown[] }).items)
+        ? (data as { items: unknown[] }).items[0]
+        : data;
+  if (!raw || typeof raw !== "object") {
+    throw new ApiError(500, { detail: "Invalid application response shape." });
+  }
+  return raw as UndergraduateApplicationRecord;
 }
 
 /** GET /api/v1/undergraduate/applications/me — requires Bearer token */
@@ -360,4 +386,33 @@ export async function verifyCredentialsUndergraduateApplication(
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
+}
+
+export async function fetchTerms(): Promise<admissionTerm[]> {
+  const res = await fetch(`${API_BASE}/api/v1/undergraduate/admission-terms/open`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === "object" && Array.isArray((data as { items?: unknown[] }).items)
+      ? (data as { items: unknown[] }).items
+      : [];
+
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const id = typeof r.id === "string" ? r.id : String(r.id ?? "");
+      const termValue =
+        typeof r.term_name === "string"
+          ? r.term_name
+          : r.term_name && typeof r.term_name === "object"
+            ? (r.term_name as Record<string, unknown>).term_name
+            : "";
+      const term_name =
+        typeof termValue === "string" ? termValue : String(termValue ?? "");
+      if (!id || !term_name) return null;
+      return { id, term_name } satisfies admissionTerm;
+    })
+    .filter((t): t is admissionTerm => t !== null);
 }

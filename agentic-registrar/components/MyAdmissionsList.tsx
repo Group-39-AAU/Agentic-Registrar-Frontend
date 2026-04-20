@@ -11,6 +11,16 @@ import {
   type UndergraduateApplicationRecord,
 } from "@/lib/api";
 
+function termText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const maybe = value as { term_name?: unknown; id?: unknown };
+    if (typeof maybe.term_name === "string") return maybe.term_name;
+    if (typeof maybe.id === "string") return maybe.id;
+  }
+  return "—";
+}
+
 export default function MyAdmissionsList() {
   const router = useRouter();
   const [items, setItems] = useState<UndergraduateApplicationRecord[] | null>(
@@ -142,7 +152,7 @@ export default function MyAdmissionsList() {
                 <td className="px-4 py-3 font-mono text-[12px] text-[#2f76b7] underline decoration-[#2f76b7]/30 underline-offset-2">
                   {row.admission_number}
                 </td>
-                <td className="px-4 py-3">{row.admission_term}</td>
+                <td className="px-4 py-3">{termText(row.admission_term)}</td>
                 <td className="px-4 py-3">{row.stream}</td>
                 <td className="px-4 py-3">{row.sponsorship_type}</td>
                 <td className="px-4 py-3">{row.current_status}</td>

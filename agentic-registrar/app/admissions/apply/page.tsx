@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AdmissionApplicationForm from "../../../components/AdmissionApplicationForm";
+import AdmissionTerms from "../../../components/AdmissionTerms";
 
 export const metadata: Metadata = {
   title: "Undergraduate Admission Application | AAU",
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default function ApplyPage() {
+
   return (
     <div className="min-h-screen bg-[#f1f5f9] font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
       <main className="mx-auto w-full max-w-[900px] px-5 pb-16 pt-[100px]">
@@ -17,9 +19,7 @@ export default function ApplyPage() {
               Please fill in all the required details to complete your application.
             </p>
           </div>
-          <div className="rounded-full bg-white px-4 py-1 text-[12px] font-bold text-[#2f76b7] shadow-sm border border-gray-200">
-            Term: 2016 E.C / 2024 G.C
-          </div>
+          <AdmissionTerms />
         </div>
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">

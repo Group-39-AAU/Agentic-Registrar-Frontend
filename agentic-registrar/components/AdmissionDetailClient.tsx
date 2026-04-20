@@ -6,15 +6,24 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ApiError,
   clearStoredAccessToken,
-  fetchProgramById,
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
-  type ProgramItem,
   type UndergraduateApplicationRecord,
 } from "@/lib/api";
 
+function termText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const maybe = value as { term_name?: unknown; id?: unknown };
+    if (typeof maybe.term_name === "string") return maybe.term_name;
+    if (typeof maybe.id === "string") return maybe.id;
+  }
+  return "—";
+}
+
 function StatusBadge({ value, kind }: { value: string; kind: "status" | "payment" }) {
   const v = value?.toUpperCase() ?? "";
+  const kindLabel = kind === "payment" ? "payment" : "status";
   let cls =
     "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ";
   if (kind === "payment") {
@@ -32,7 +41,14 @@ function StatusBadge({ value, kind }: { value: string; kind: "status" | "payment
       cls += "bg-red-100 text-red-900 ring-1 ring-red-200";
     else cls += "bg-[#eef4ff] text-[#2a66a7] ring-1 ring-[#c5d9f5]";
   }
-  return <span className={cls}>{value || "—"}</span>;
+  return (
+    <span className={cls}>
+      <span className="mr-1.5 rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-semibold lowercase tracking-normal">
+        {kindLabel}
+      </span>
+      <span>{value || "—"}</span>
+    </span>
+  );
 }
 
 function DetailRow({
@@ -64,7 +80,11 @@ function ProgramChoiceDisplay({
   program,
   fallbackId,
 }: {
-  program: ProgramItem | null;
+  program?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
   fallbackId: string;
 }) {
   if (program) {
@@ -73,13 +93,8 @@ function ProgramChoiceDisplay({
         <p className="text-[15px] font-semibold text-[#1a1a1a]">{program.name}</p>
         <p className="text-[13px] text-[#3a3a3a]">
           <span className="font-mono font-semibold text-[#2f76b7]">{program.code}</span>
-          <span className="text-[#5a5a5a]"> · </span>
-          {program.department}
+          <span className="text-[#5a5a5a]"> · {program.id}</span>
         </p>
-        <p className="text-[11px] uppercase tracking-wide text-[#5a5a5a]">
-          Stream: {program.stream}
-        </p>
-       
       </div>
     );
   }
@@ -98,11 +113,6 @@ export default function AdmissionDetailClient({
 }) {
   const router = useRouter();
   const [data, setData] = useState<UndergraduateApplicationRecord | null>(null);
-  const [programs, setPrograms] = useState<{
-    c1: ProgramItem | null;
-    c2: ProgramItem | null;
-    c3: ProgramItem | null;
-  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,24 +127,10 @@ export default function AdmissionDetailClient({
     (async () => {
       setLoading(true);
       setError(null);
-      setPrograms(null);
       try {
         const row = await fetchUndergraduateApplicationById(applicationId);
-        const ids = [
-          row.program_choice_1_id,
-          row.program_choice_2_id,
-          row.program_choice_3_id,
-        ];
-        const loaded = await Promise.all(
-          ids.map((id) => fetchProgramById(id).catch((): null => null))
-        );
         if (!cancelled) {
           setData(row);
-          setPrograms({
-            c1: loaded[0],
-            c2: loaded[1],
-            c3: loaded[2],
-          });
         }
       } catch (e) {
         if (!cancelled) {
@@ -212,7 +208,7 @@ export default function AdmissionDetailClient({
     );
   }
 
-  if (!data || !programs) return null;
+  if (!data) return null;
 
   const extra =
     data.extra_data && Object.keys(data.extra_data).length > 0
@@ -245,16 +241,16 @@ export default function AdmissionDetailClient({
               <StatusBadge value={data.payment_status} kind="payment" />
             </div>
           </div>
-          <p className="mt-2 text-[13px] text-[#5a5a5a]">{data.admission_term}</p>
+          <p className="mt-2 text-[13px] text-[#5a5a5a]">
+            {termText(data.admission_term)}
+          </p>
         </div>
 
         <dl className="px-8 pb-2 pt-2">
           <DetailRow label="Application ID">
             <IdLine id={data.id} />
           </DetailRow>
-          <DetailRow label="Applicant ID">
-            <IdLine id={data.applicant_id} />
-          </DetailRow>
+         
           <DetailRow label="Sponsorship">{data.sponsorship_type}</DetailRow>
           <DetailRow label="Stream">{data.stream}</DetailRow>
           <DetailRow label="Final decision">
@@ -272,43 +268,32 @@ export default function AdmissionDetailClient({
         <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
           <h2 className="text-[15px] font-bold text-[#2a66a7]">Program choices</h2>
           <p className="mt-1 text-[12px] text-[#5a5a5a]">
-            First, second, and third preferences (loaded from the programs catalog).
+            First, second, and third preferences from your submitted application.
           </p>
         </div>
         <dl className="px-8 pb-4">
           <DetailRow label="1st choice">
             <ProgramChoiceDisplay
-              program={programs.c1}
-              fallbackId={data.program_choice_1_id}
+              program={data.program_choice_1}
+              fallbackId={data.program_choice_1?.id ?? data.program_choice_1_id ?? "—"}
             />
           </DetailRow>
           <DetailRow label="2nd choice">
             <ProgramChoiceDisplay
-              program={programs.c2}
-              fallbackId={data.program_choice_2_id}
+              program={data.program_choice_2}
+              fallbackId={data.program_choice_2?.id ?? data.program_choice_2_id ?? "—"}
             />
           </DetailRow>
           <DetailRow label="3rd choice">
             <ProgramChoiceDisplay
-              program={programs.c3}
-              fallbackId={data.program_choice_3_id}
+              program={data.program_choice_3}
+              fallbackId={data.program_choice_3?.id ?? data.program_choice_3_id ?? "—"}
             />
           </DetailRow>
         </dl>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
-          <h2 className="text-[15px] font-bold text-[#2a66a7]">Payment</h2>
-        </div>
-        <dl className="px-8 pb-4">
-          <DetailRow label="Payment reference">
-            {data.payment_reference && data.payment_reference !== "string"
-              ? data.payment_reference
-              : "—"}
-          </DetailRow>
-        </dl>
-      </div>
+   
 
       {extra ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
