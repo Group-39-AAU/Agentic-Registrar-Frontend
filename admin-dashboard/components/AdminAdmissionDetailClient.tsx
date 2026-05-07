@@ -34,6 +34,13 @@ type ApplicationRecord = {
   is_deleted?: boolean;
   created_at?: string;
   updated_at?: string;
+  uat_id?: string | null;
+};
+
+type UatResult = {
+  uat_id: string;
+  score: number;
+  message: string;
 };
 
 function termText(value: unknown): string {
@@ -126,6 +133,36 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
   const [data, setData] = useState<ApplicationRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [uatLoading, setUatLoading] = useState(false);
+  const [uatError, setUatError] = useState<string | null>(null);
+  const [uatResult, setUatResult] = useState<UatResult | null>(null);
+
+  const handleCheckUat = async () => {
+    if (!data?.uat_id) return;
+    const token = localStorage.getItem("admin_dashboard_token");
+    setUatError(null);
+    setUatLoading(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/testing-center/callback/${encodeURIComponent(data.uat_id)}`,
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+      );
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          payload && typeof payload === "object" && "detail" in payload
+            ? String((payload as { detail?: unknown }).detail ?? "Could not fetch UAT result.")
+            : "Could not fetch UAT result."
+        );
+      }
+      setUatResult(payload as UatResult);
+    } catch (e) {
+      setUatError(e instanceof Error ? e.message : "Could not fetch UAT result.");
+    } finally {
+      setUatLoading(false);
+    }
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("admin_dashboard_token");
@@ -272,9 +309,7 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
         </div>
 
         <dl className="px-8 pb-2 pt-2">
-          <DetailRow label="Application ID">
-            <IdLine id={data.id} />
-          </DetailRow>
+         
           {data.applicant_id ? (
             <DetailRow label="Applicant ID">
               <IdLine id={data.applicant_id} />
@@ -318,6 +353,51 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
             />
           </DetailRow>
         </dl>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
+          <div>
+            <h2 className="text-[15px] font-bold text-[#2a66a7]">UAT result</h2>
+            <p className="mt-1 text-[12px] text-[#5a5a5a]">
+              Look up the testing center result tied to this application.
+            </p>
+          </div>
+          {data.uat_id ? (
+            <button
+              type="button"
+              onClick={handleCheckUat}
+              disabled={uatLoading}
+              className="h-[36px] rounded-md bg-[#3f79b5] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+            >
+              {uatLoading ? "Checking…" : uatResult ? "Refresh result" : "Check result"}
+            </button>
+          ) : null}
+        </div>
+        <div className="px-8 py-4">
+        
+          {uatError ? (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800" role="alert">
+              {uatError}
+            </div>
+          ) : null}
+          {uatResult ? (
+            <>
+              <DetailRow label="Score">
+                <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
+                  {uatResult.score}
+                </span>
+              </DetailRow>
+              <DetailRow label="Message">
+                <span className="text-[14px] text-[#1a1a1a]">{uatResult.message}</span>
+              </DetailRow>
+            </>
+          ) : !data.uat_id ? (
+            <p className="mt-2 text-[13px] text-[#5a5a5a]">
+            The Applicant has not taken the UAT test yet.
+          </p>
+          ) : null}
+        </div>
       </div>
 
       {extra ? (
