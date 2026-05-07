@@ -20,15 +20,31 @@ type ReviewRow = {
 
 type SponsorshipFilter = "ALL" | "SELF_SPONSORED" | "GOVERNMENT";
 
+type HumanDecision = "ADMIT" | "REJECT" | "WAITLIST";
+
+const DECISION_OPTIONS: Array<{ value: HumanDecision; label: string; helper: string }> = [
+  { value: "ADMIT", label: "Admit", helper: "Accept this applicant into the program." },
+  { value: "REJECT", label: "Reject", helper: "Deny admission for this applicant." },
+  { value: "WAITLIST", label: "Waitlist", helper: "Hold applicant for later reconsideration." },
+];
+
+type DecisionTarget =
+  | { mode: "single"; applicationId: string }
+  | { mode: "batch"; applicationIds: string[] };
+
 export default function ReviewPage() {
   const router = useRouter();
-  const [decidingId, setDecidingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [batchLoading, setBatchLoading] = useState(false);
   const [sponsorshipFilter, setSponsorshipFilter] = useState<SponsorshipFilter>("ALL");
 
   const [students, setStudents] = useState<RequestState>(initialState);
   const [decisionResult, setDecisionResult] = useState<RequestState>(initialState);
+
+  const [decisionTarget, setDecisionTarget] = useState<DecisionTarget | null>(null);
+  const [decisionValue, setDecisionValue] = useState<HumanDecision>("ADMIT");
+  const [decisionRemarks, setDecisionRemarks] = useState<string>("");
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
+  const [decisionFormError, setDecisionFormError] = useState<string | null>(null);
 
   const loadStudents = async () => {
     setStudents({ loading: true, error: null, data: null });
@@ -110,34 +126,63 @@ export default function ReviewPage() {
 
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
 
-  const onSingleDecision = async (applicationId: string) => {
-    setDecidingId(applicationId);
-    await callApi(
-      setDecisionResult,
-      `/api/v1/undergraduate/review/decide/${encodeURIComponent(applicationId)}`,
-      "POST",
-      {
-        human_decision: "APPROVED",
-        justification_remarks: "Decided by admissions officer via admin dashboard.",
-      }
-    );
-    setDecidingId(null);
-    await loadStudents();
+  const openSingleDecision = (applicationId: string) => {
+    setDecisionValue("ADMIT");
+    setDecisionRemarks("");
+    setDecisionFormError(null);
+    setDecisionTarget({ mode: "single", applicationId });
   };
 
-  const onBatchDecision = async () => {
+  const openBatchDecision = () => {
     if (selectedIds.length === 0) return;
-    setBatchLoading(true);
-    await callApi(setDecisionResult, "/api/v1/undergraduate/review/decide/batch", "POST", {
-      decisions: selectedIds.map((application_id) => ({
-        application_id,
-        human_decision: "APPROVED",
-        justification_remarks: "Decided by admissions officer via admin dashboard.",
-      })),
-    });
-    setBatchLoading(false);
-    setSelectedIds([]);
-    await loadStudents();
+    setDecisionValue("ADMIT");
+    setDecisionRemarks("");
+    setDecisionFormError(null);
+    setDecisionTarget({ mode: "batch", applicationIds: [...selectedIds] });
+  };
+
+  const closeDecisionDialog = () => {
+    if (decisionSubmitting) return;
+    setDecisionTarget(null);
+    setDecisionFormError(null);
+  };
+
+  const submitDecision = async () => {
+    if (!decisionTarget) return;
+    const trimmedRemarks = decisionRemarks.trim();
+    if (!trimmedRemarks) {
+      setDecisionFormError("Justification remarks are required.");
+      return;
+    }
+
+    setDecisionFormError(null);
+    setDecisionSubmitting(true);
+    try {
+      if (decisionTarget.mode === "single") {
+        await callApi(
+          setDecisionResult,
+          `/api/v1/undergraduate/review/decide/${encodeURIComponent(decisionTarget.applicationId)}`,
+          "POST",
+          {
+            human_decision: decisionValue,
+            justification_remarks: trimmedRemarks,
+          }
+        );
+      } else {
+        await callApi(setDecisionResult, "/api/v1/undergraduate/review/decide/batch", "POST", {
+          decisions: decisionTarget.applicationIds.map((application_id) => ({
+            application_id,
+            human_decision: decisionValue,
+            justification_remarks: trimmedRemarks,
+          })),
+        });
+        setSelectedIds([]);
+      }
+      setDecisionTarget(null);
+      await loadStudents();
+    } finally {
+      setDecisionSubmitting(false);
+    }
   };
 
   return (
@@ -172,11 +217,10 @@ export default function ReviewPage() {
             </p>
             <button
               type="button"
-              disabled={batchLoading}
-              onClick={onBatchDecision}
+              onClick={openBatchDecision}
               className="h-[32px] rounded-md bg-[#3f79b5] px-3 text-[12px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
             >
-              {batchLoading ? "Deciding..." : "Decide Batch"}
+              Decide Batch
             </button>
           </div>
         ) : null}
@@ -280,13 +324,13 @@ export default function ReviewPage() {
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          disabled={!id || decidingId === id}
+                          disabled={!id}
                           onClick={() => {
-                            if (id) onSingleDecision(id);
+                            if (id) openSingleDecision(id);
                           }}
                           className="h-[30px] rounded-md bg-[#3f79b5] px-3 text-[11px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
                         >
-                          {decidingId === id ? "Deciding..." : "Decide"}
+                          Decide
                         </button>
                       </td>
                     </tr>
@@ -309,6 +353,176 @@ export default function ReviewPage() {
           ) : null}
         </div>
       </Section>
+
+      {decisionTarget ? (
+        <DecisionDialog
+          target={decisionTarget}
+          decision={decisionValue}
+          onDecisionChange={setDecisionValue}
+          remarks={decisionRemarks}
+          onRemarksChange={setDecisionRemarks}
+          onCancel={closeDecisionDialog}
+          onConfirm={submitDecision}
+          submitting={decisionSubmitting}
+          error={decisionFormError}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DecisionDialog({
+  target,
+  decision,
+  onDecisionChange,
+  remarks,
+  onRemarksChange,
+  onCancel,
+  onConfirm,
+  submitting,
+  error,
+}: {
+  target: DecisionTarget;
+  decision: HumanDecision;
+  onDecisionChange: (value: HumanDecision) => void;
+  remarks: string;
+  onRemarksChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  submitting: boolean;
+  error: string | null;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const isBatch = target.mode === "batch";
+  const count = isBatch ? target.applicationIds.length : 1;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="decision-dialog-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-[520px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-gray-100 bg-gradient-to-r from-[#f0f6fc] to-white px-6 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5a5a5a]">
+            {isBatch ? "Batch decision" : "Single decision"}
+          </p>
+          <h2 id="decision-dialog-title" className="mt-1 text-[18px] font-bold text-[#1a1a1a]">
+            {isBatch
+              ? `Decide ${count} student${count > 1 ? "s" : ""}`
+              : "Decide this student"}
+          </h2>
+          <p className="mt-1 text-[12px] text-[#5a5a5a]">
+            {isBatch
+              ? "Selected decision and remarks will be applied to every selected student."
+              : "Select a decision and provide a justification for the audit trail."}
+          </p>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <fieldset>
+            <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-[#3a3a3a]">
+              Human decision
+            </legend>
+            <div className="grid gap-2">
+              {DECISION_OPTIONS.map((option) => {
+                const checked = decision === option.value;
+                return (
+                  <label
+                    key={option.value}
+                    className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+                      checked
+                        ? "border-[#3f79b5] bg-[#eef4ff]"
+                        : "border-gray-200 bg-white hover:bg-[#f8fafc]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="human-decision"
+                      value={option.value}
+                      checked={checked}
+                      onChange={() => onDecisionChange(option.value)}
+                      className="mt-1"
+                    />
+                    <span className="block">
+                      <span className="block text-[13px] font-semibold text-[#1a1a1a]">
+                        {option.label}
+                      </span>
+                      <span className="block text-[11px] text-[#5a5a5a]">{option.helper}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <div>
+            <label
+              htmlFor="decision-remarks"
+              className="mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-[#3a3a3a]"
+            >
+              Justification remarks
+            </label>
+            <textarea
+              id="decision-remarks"
+              value={remarks}
+              onChange={(e) => onRemarksChange(e.target.value)}
+              rows={4}
+              placeholder="Explain the reasoning for this decision"
+              className="w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 py-2 text-[13px] outline-none focus:border-[#3f79b5]"
+            />
+            <p className="mt-1 text-[11px] text-[#5a5a5a]">
+              {isBatch
+                ? "Same remarks will be sent for every selected student."
+                : "Required to record the rationale for this decision."}
+            </p>
+          </div>
+
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-gray-100 bg-[#fafbfc] px-6 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="h-[36px] rounded-md border border-[#9bb0cc] bg-white px-4 text-[13px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className="h-[36px] min-w-[140px] rounded-md bg-[#3f79b5] px-4 text-[13px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
+          >
+            {submitting
+              ? "Submitting…"
+              : isBatch
+                ? `Submit (${count})`
+                : "Submit decision"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
