@@ -231,12 +231,6 @@ export default function EnrollmentPage() {
                       <th className="px-4 py-3">Department</th>
                       <th className="px-4 py-3">Section</th>
                       <th className="px-4 py-3">Enrollment term</th>
-                      <th className="px-4 py-3">University ID</th>
-                      <th className="px-4 py-3">Enrollment ID</th>
-                      <th className="px-4 py-3">Application ID</th>
-                      <th className="px-4 py-3">Applicant ID</th>
-                      <th className="px-4 py-3">Admission term ID</th>
-                      <th className="px-4 py-3">Program ID</th>
                       <th className="px-4 py-3">Created</th>
                     </tr>
                   </thead>
@@ -252,42 +246,6 @@ export default function EnrollmentPage() {
                         <td className="max-w-[180px] px-4 py-3">{row.department ?? "—"}</td>
                         <td className="px-4 py-3">{row.section ?? "—"}</td>
                         <td className="px-4 py-3">{row.enrollment_term ?? "—"}</td>
-                        <td
-                          className="max-w-[140px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]"
-                          title={row.university_id}
-                        >
-                          {row.university_id ?? "—"}
-                        </td>
-                        <td
-                          className="max-w-[180px] truncate px-4 py-3 font-mono text-[11px] text-[#2f76b7]"
-                          title={row.id}
-                        >
-                          {row.id ?? "—"}
-                        </td>
-                        <td
-                          className="max-w-[180px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]"
-                          title={row.application_id}
-                        >
-                          {row.application_id ?? "—"}
-                        </td>
-                        <td
-                          className="max-w-[180px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]"
-                          title={row.applicant_id}
-                        >
-                          {row.applicant_id ?? "—"}
-                        </td>
-                        <td
-                          className="max-w-[180px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]"
-                          title={row.admission_term_id}
-                        >
-                          {row.admission_term_id ?? "—"}
-                        </td>
-                        <td
-                          className="max-w-[180px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]"
-                          title={row.program_id}
-                        >
-                          {row.program_id ?? "—"}
-                        </td>
                         <td className="whitespace-nowrap px-4 py-3 text-[12px] text-[#5a5a5a]">
                           {row.created_at
                             ? new Date(row.created_at).toLocaleString(undefined, {
