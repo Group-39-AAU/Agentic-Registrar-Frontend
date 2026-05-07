@@ -252,7 +252,7 @@ export type UndergraduateApplicationRequest = {
   sponsorship_type: string;
   stream: string;
   admission_number: string;
-  admission_term: string;
+  admission_term_id: string;
   program_choice_1_id: string;
   program_choice_2_id: string;
   program_choice_3_id: string;
@@ -273,14 +273,22 @@ export async function submitUndergraduateApplication(
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
+  const rawBody = body as UndergraduateApplicationRequest & {
+    admission_term?: unknown;
+  };
+  const normalizedBody = {
+    ...rawBody,
+    admission_term_id:
+      rawBody.admission_term_id ??
+      (typeof rawBody.admission_term === "string" ? rawBody.admission_term : ""),
+    extra_data: rawBody.extra_data ?? {},
+  };
+  delete (normalizedBody as { admission_term?: unknown }).admission_term;
 
   const res = await fetch(`${API_BASE}/api/v1/undergraduate/applications`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      ...body,
-      extra_data: body.extra_data ?? {},
-    }),
+    body: JSON.stringify(normalizedBody),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data);

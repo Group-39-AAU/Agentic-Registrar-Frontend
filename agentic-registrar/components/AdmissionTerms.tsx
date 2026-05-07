@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { admissionTerm } from "../lib/types";
 import { fetchTerms } from "../lib/api";
 
-export default function AdmissionTerms() {
+type AdmissionTermsProps = {
+  value: string;
+  onChange: (termId: string) => void;
+};
+
+export default function AdmissionTerms({ value, onChange }: AdmissionTermsProps) {
   const [terms, setTerms] = useState<admissionTerm[]>([]);
 
   const toTermText = (value: unknown): string => {
@@ -19,16 +24,19 @@ export default function AdmissionTerms() {
 
   useEffect(() => {
     const fetch = async () => {
-      const terms = await fetchTerms();
-      setTerms(terms);
+      const loadedTerms = await fetchTerms();
+      setTerms(loadedTerms);
+      if (!value && loadedTerms.length > 0) {
+        onChange(loadedTerms[0].id);
+      }
     };
     fetch();
-  }, []);
+  }, [onChange, value]);
   return (
     <div className="rounded-full bg-white px-4 py-1 text-[12px] font-bold text-[#2f76b7] shadow-sm border border-gray-200">
-        <select>
+        <select value={value} onChange={(e) => onChange(e.target.value)}>
         {terms.map((term) => (
-            <option key={String(term.id)} value={toTermText(term.term_name)}>
+            <option key={String(term.id)} value={String(term.id)}>
             {toTermText(term.term_name)}
             </option>
         ))}
