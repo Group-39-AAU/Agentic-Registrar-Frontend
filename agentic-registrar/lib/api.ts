@@ -126,6 +126,9 @@ export async function loginUser(body: LoginRequest): Promise<LoginResponse> {
 export type UndergraduateApplicationRecord = {
   id: string;
   applicant_id: string;
+  applicant_email?: string;
+  applicant_first_name?: string;
+  applicant_last_name?: string;
   sponsorship_type: string;
   stream: string;
   admission_number: string;
@@ -157,7 +160,31 @@ export type UndergraduateApplicationRecord = {
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
+  uat_id?: string | null;
 };
+
+export type TestingCenterCallbackResponse = {
+  uat_id: string;
+  score: number;
+  message: string;
+};
+
+/** GET /api/v1/testing-center/callback/{uat_id} — returns UAT score/message */
+export async function fetchTestingCenterCallback(
+  uatId: string,
+  accessToken?: string | null
+): Promise<TestingCenterCallbackResponse> {
+  const token = accessToken ?? getStoredAccessToken();
+  const headers: HeadersInit = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(
+    `${API_BASE}/api/v1/testing-center/callback/${encodeURIComponent(uatId)}`,
+    { headers }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as TestingCenterCallbackResponse;
+}
 
 /** GET /api/v1/undergraduate/applications/{application_id} — requires Bearer token */
 export async function fetchUndergraduateApplicationById(
@@ -354,26 +381,26 @@ export async function callbackApplicationPayment(
   return data;
 }
 
-/** POST /api/v1/undergraduate/applications/{application_id}/validate */
-export async function validateUndergraduateApplication(
-  applicationId: string,
-  accessToken?: string | null
-): Promise<unknown> {
-  const token = accessToken ?? getStoredAccessToken();
-  if (!token) {
-    throw new ApiError(401, { detail: "Not authenticated" });
-  }
-  const res = await fetch(
-    `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}/validate`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data);
-  return data;
-}
+// /** POST /api/v1/undergraduate/applications/{application_id}/validate */
+// export async function validateUndergraduateApplication(
+//   applicationId: string,
+//   accessToken?: string | null
+// ): Promise<unknown> {
+//   const token = accessToken ?? getStoredAccessToken();
+//   if (!token) {
+//     throw new ApiError(401, { detail: "Not authenticated" });
+//   }
+//   const res = await fetch(
+//     `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}`,
+//     {
+//       method: "POST",
+//       headers: { Authorization: `Bearer ${token}` },
+//     }
+//   );
+//   const data = await res.json().catch(() => ({}));
+//   if (!res.ok) throw new ApiError(res.status, data);
+//   return data;
+// }
 
 /** POST /api/v1/undergraduate/applications/{application_id}/verify-credentials */
 export async function verifyCredentialsUndergraduateApplication(

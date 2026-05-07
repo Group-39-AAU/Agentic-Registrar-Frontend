@@ -97,14 +97,14 @@ export default function RegistrationForm() {
             onChange={handleChange}
           />
           <FormInput
-            label="Father Name (last name for account)"
+            label="Last Name"
             name="fatherName"
             value={formData.fatherName}
             required
             onChange={handleChange}
           />
           <FormInput
-            label="Username (Functional Email)"
+            label="Email"
             name="email"
             type="email"
             value={formData.email}

@@ -5,11 +5,33 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ApiError,
+  callbackApplicationPayment,
   clearStoredAccessToken,
+  fetchTestingCenterCallback,
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
+  initiateApplicationPayment,
+  verifyCredentialsUndergraduateApplication,
+  type PaymentInitiateResponse,
+  type TestingCenterCallbackResponse,
   type UndergraduateApplicationRecord,
 } from "@/lib/api";
+
+function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
 
 function termText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -116,6 +138,27 @@ export default function AdmissionDetailClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [paymentInit, setPaymentInit] = useState<PaymentInitiateResponse | null>(null);
+  const [paymentStartLoading, setPaymentStartLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [modalPaymentRef, setModalPaymentRef] = useState("");
+  const [finalizeLoading, setFinalizeLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const [uatLoading, setUatLoading] = useState(false);
+  const [uatError, setUatError] = useState<string | null>(null);
+  const [uatResult, setUatResult] = useState<TestingCenterCallbackResponse | null>(null);
+
+  const reloadApplication = async () => {
+    try {
+      const row = await fetchUndergraduateApplicationById(applicationId);
+      setData(row);
+    } catch {
+      // ignore — keep existing data
+    }
+  };
+
   useEffect(() => {
     if (!getStoredAccessToken()) {
       setLoading(false);
@@ -152,6 +195,89 @@ export default function AdmissionDetailClient({
       cancelled = true;
     };
   }, [applicationId]);
+
+  useEffect(() => {
+    if (!paymentModalOpen || !paymentInit) return;
+    setModalPaymentRef(paymentInit.payment_reference);
+  }, [paymentModalOpen, paymentInit]);
+
+  useEffect(() => {
+    if (!paymentModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPaymentModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [paymentModalOpen]);
+
+  const handleStartPayment = async () => {
+    setPaymentError(null);
+    setPaymentStartLoading(true);
+    try {
+      const init = await initiateApplicationPayment(applicationId);
+      setPaymentInit(init);
+      setPaymentModalOpen(true);
+    } catch (err) {
+      setPaymentError(
+        err instanceof ApiError ? err.message : "Could not start payment."
+      );
+    } finally {
+      setPaymentStartLoading(false);
+    }
+  };
+
+  const handlePayInModal = async () => {
+    if (!paymentInit) return;
+    const ref = modalPaymentRef.trim();
+    if (!ref) {
+      setPaymentError("Enter the payment reference.");
+      return;
+    }
+    setPaymentError(null);
+    setFinalizeLoading(true);
+    try {
+      await callbackApplicationPayment(applicationId, {
+        payment_reference: ref,
+        status: "COMPLETED",
+      });
+      await verifyCredentialsUndergraduateApplication(applicationId).catch(() => null);
+      setPaymentModalOpen(false);
+      setPaymentInit(null);
+      await reloadApplication();
+    } catch (err) {
+      setPaymentError(
+        err instanceof ApiError ? err.message : "Payment confirmation failed."
+      );
+    } finally {
+      setFinalizeLoading(false);
+    }
+  };
+
+  const copyReference = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setPaymentError("Could not copy. Please copy the reference manually.");
+    }
+  };
+
+  const handleCheckUat = async () => {
+    if (!data?.uat_id) return;
+    setUatError(null);
+    setUatLoading(true);
+    try {
+      const result = await fetchTestingCenterCallback(data.uat_id);
+      setUatResult(result);
+    } catch (err) {
+      setUatError(
+        err instanceof ApiError ? err.message : "Could not fetch UAT result."
+      );
+    } finally {
+      setUatLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -215,6 +341,8 @@ export default function AdmissionDetailClient({
       ? JSON.stringify(data.extra_data, null, 2)
       : null;
 
+  const paymentPending = (data.payment_status ?? "").toUpperCase().includes("PENDING");
+
   return (
     <div className="mt-6 space-y-6">
       {data.is_deleted ? (
@@ -247,10 +375,26 @@ export default function AdmissionDetailClient({
         </div>
 
         <dl className="px-8 pb-2 pt-2">
-          <DetailRow label="Application ID">
-            <IdLine id={data.id} />
-          </DetailRow>
-         
+          {(() => {
+            const applicantName = [data.applicant_first_name, data.applicant_last_name]
+              .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+              .join(" ")
+              .trim();
+            return applicantName ? (
+              <DetailRow label="Applicant">{applicantName}</DetailRow>
+            ) : null;
+          })()}
+          {data.applicant_email ? (
+            <DetailRow label="Email">
+              <a
+                href={`mailto:${data.applicant_email}`}
+                className="text-[#2f76b7] underline underline-offset-2 hover:text-[#2563a8]"
+              >
+                {data.applicant_email}
+              </a>
+            </DetailRow>
+          ) : null}
+          <DetailRow label="Admission term">{termText(data.admission_term)}</DetailRow>
           <DetailRow label="Sponsorship">{data.sponsorship_type}</DetailRow>
           <DetailRow label="Stream">{data.stream}</DetailRow>
           <DetailRow label="Final decision">
@@ -262,6 +406,37 @@ export default function AdmissionDetailClient({
             {data.remarks && data.remarks !== "string" ? data.remarks : "—"}
           </DetailRow>
         </dl>
+
+        {paymentPending ? (
+          <div className="border-t border-gray-100 bg-amber-50/50 px-8 py-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold text-amber-900">
+                  Payment is pending for this application
+                </p>
+                <p className="mt-1 text-[12px] text-amber-800">
+                  Complete payment to proceed with credential verification.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleStartPayment}
+                disabled={paymentStartLoading}
+                className="h-[40px] rounded-md bg-[#3f79b5] px-5 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+              >
+                {paymentStartLoading ? "Starting…" : "Pay now"}
+              </button>
+            </div>
+            {paymentError ? (
+              <p
+                role="alert"
+                className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800"
+              >
+                {paymentError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -295,6 +470,51 @@ export default function AdmissionDetailClient({
 
    
 
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
+          <div>
+            <h2 className="text-[15px] font-bold text-[#2a66a7]">UAT result</h2>
+            <p className="mt-1 text-[12px] text-[#5a5a5a]">
+              Look up the testing center result tied to this application.
+            </p>
+          </div>
+          {data.uat_id ? (
+            <button
+              type="button"
+              onClick={handleCheckUat}
+              disabled={uatLoading}
+              className="h-[36px] rounded-md bg-[#3f79b5] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+            >
+              {uatLoading ? "Checking…" : uatResult ? "Refresh result" : "Check result"}
+            </button>
+          ) : null}
+        </div>
+        <div className="px-8 py-4">
+          
+          {uatError ? (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800" role="alert">
+              {uatError}
+            </div>
+          ) : null}
+          {uatResult ? (
+            <>
+              <DetailRow label="Score">
+                <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
+                  {uatResult.score}
+                </span>
+              </DetailRow>
+              <DetailRow label="Message">
+                <span className="text-[14px] text-[#1a1a1a]">{uatResult.message}</span>
+              </DetailRow>
+            </>
+          ) : !data.uat_id ? (
+            <p className="mt-2 text-[13px] text-[#5a5a5a]">
+            The Applicant has not taken the UAT test yet.
+          </p>
+          ) : null}
+        </div>
+      </div>
+
       {extra ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
@@ -303,6 +523,109 @@ export default function AdmissionDetailClient({
           <pre className="max-h-[320px] overflow-auto px-8 py-4 font-mono text-[11px] leading-relaxed text-[#3a3a3a]">
             {extra}
           </pre>
+        </div>
+      ) : null}
+
+      {paymentModalOpen && paymentInit ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPaymentModalOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="detail-payment-dialog-title"
+            className="w-full max-w-[460px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-gray-100 bg-gradient-to-r from-[#f0f6fc] to-white px-6 py-5">
+              <h2 id="detail-payment-dialog-title" className="text-[18px] font-bold text-[#2a66a7]">
+                Finish payment
+              </h2>
+              <p className="mt-1 text-[13px] text-[#5a5a5a]">
+                Use the reference below with your payment provider, then confirm.
+              </p>
+            </div>
+            <div className="space-y-4 px-6 py-6">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                  Payment reference
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <code className="break-all rounded-md bg-[#f1f5f9] px-3 py-2 font-mono text-[12px] text-[#1a1a1a]">
+                    {paymentInit.payment_reference}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyReference(paymentInit.payment_reference)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-[12px] font-semibold text-[#2f76b7] transition-colors hover:bg-[#f8fafc]"
+                  >
+                    <CopyIcon className="h-4 w-4" />
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              {paymentInit.payment_url ? (
+                <a
+                  href={paymentInit.payment_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-[13px] font-semibold text-[#2f76b7] underline underline-offset-2 hover:text-[#2563a8]"
+                >
+                  Open payment provider in a new tab
+                </a>
+              ) : null}
+
+              <div>
+                <label
+                  htmlFor="detail-modal-payment-ref"
+                  className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]"
+                >
+                  Confirm payment reference
+                </label>
+                <input
+                  id="detail-modal-payment-ref"
+                  type="text"
+                  value={modalPaymentRef}
+                  onChange={(e) => setModalPaymentRef(e.target.value)}
+                  className="w-full rounded-lg border border-[#9bb0cc] bg-[#eef4ff] px-3 py-2.5 text-[14px] text-[#1a1a1a] outline-none focus:border-[#2f76b7] focus:ring-2 focus:ring-[#2f76b7]/25"
+                  placeholder="Paste or enter reference"
+                  autoComplete="off"
+                />
+              </div>
+
+              {paymentError ? (
+                <p
+                  role="alert"
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800"
+                >
+                  {paymentError}
+                </p>
+              ) : null}
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPaymentModalOpen(false)}
+                  className="h-[42px] rounded-lg border border-gray-300 px-5 text-[14px] font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={finalizeLoading}
+                  onClick={handlePayInModal}
+                  className="h-[42px] min-w-[120px] rounded-lg bg-[#3f79b5] px-6 text-[14px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+                >
+                  {finalizeLoading ? "Processing…" : "Pay"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 

@@ -15,6 +15,9 @@ type ProgramChoice = {
 type ApplicationRecord = {
   id: string;
   applicant_id?: string;
+  applicant_email?: string;
+  applicant_first_name?: string;
+  applicant_last_name?: string;
   sponsorship_type: string;
   stream: string;
   admission_number: string;
@@ -165,21 +168,29 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("admin_dashboard_token");
-    if (!token) {
-      setLoading(false);
-      setError("not_authenticated");
-      return;
-    }
-
+    const controller = new AbortController();
     let cancelled = false;
-    (async () => {
+
+    const loadApplication = async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+
+      const token = localStorage.getItem("admin_dashboard_token");
+      if (!token?.trim()) {
+        setLoading(false);
+        setError("not_authenticated");
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
         const res = await fetch(
           `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          }
         );
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -200,14 +211,18 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
         if (!cancelled) setData(row as ApplicationRecord);
       } catch (e) {
         if (cancelled) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setError(e instanceof Error ? e.message : "Could not load this application.");
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    void loadApplication();
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [applicationId]);
 
@@ -309,12 +324,26 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
         </div>
 
         <dl className="px-8 pb-2 pt-2">
-         
-          {data.applicant_id ? (
-            <DetailRow label="Applicant ID">
-              <IdLine id={data.applicant_id} />
+          {(() => {
+            const applicantName = [data.applicant_first_name, data.applicant_last_name]
+              .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+              .join(" ")
+              .trim();
+            return applicantName ? (
+              <DetailRow label="Applicant">{applicantName}</DetailRow>
+            ) : null;
+          })()}
+          {data.applicant_email ? (
+            <DetailRow label="Email">
+              <a
+                href={`mailto:${data.applicant_email}`}
+                className="text-[#2f76b7] underline underline-offset-2 hover:text-[#2563a8]"
+              >
+                {data.applicant_email}
+              </a>
             </DetailRow>
           ) : null}
+          <DetailRow label="Admission term">{termText(data.admission_term)}</DetailRow>
           <DetailRow label="Sponsorship">{data.sponsorship_type}</DetailRow>
           <DetailRow label="Stream">{data.stream}</DetailRow>
           <DetailRow label="Final decision">
