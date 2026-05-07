@@ -15,6 +15,9 @@ type ProgramChoice = {
 type ApplicationRecord = {
   id: string;
   applicant_id?: string;
+  applicant_email?: string;
+  applicant_first_name?: string;
+  applicant_last_name?: string;
   sponsorship_type: string;
   stream: string;
   admission_number: string;
@@ -34,6 +37,13 @@ type ApplicationRecord = {
   is_deleted?: boolean;
   created_at?: string;
   updated_at?: string;
+  uat_id?: string | null;
+};
+
+type UatResult = {
+  uat_id: string;
+  score: number;
+  message: string;
 };
 
 function termText(value: unknown): string {
@@ -127,22 +137,60 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("admin_dashboard_token");
-    if (!token) {
-      setLoading(false);
-      setError("not_authenticated");
-      return;
-    }
+  const [uatLoading, setUatLoading] = useState(false);
+  const [uatError, setUatError] = useState<string | null>(null);
+  const [uatResult, setUatResult] = useState<UatResult | null>(null);
 
+  const handleCheckUat = async () => {
+    if (!data?.uat_id) return;
+    const token = localStorage.getItem("admin_dashboard_token");
+    setUatError(null);
+    setUatLoading(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/testing-center/callback/${encodeURIComponent(data.uat_id)}`,
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+      );
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          payload && typeof payload === "object" && "detail" in payload
+            ? String((payload as { detail?: unknown }).detail ?? "Could not fetch UAT result.")
+            : "Could not fetch UAT result."
+        );
+      }
+      setUatResult(payload as UatResult);
+    } catch (e) {
+      setUatError(e instanceof Error ? e.message : "Could not fetch UAT result.");
+    } finally {
+      setUatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
     let cancelled = false;
-    (async () => {
+
+    const loadApplication = async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+
+      const token = localStorage.getItem("admin_dashboard_token");
+      if (!token?.trim()) {
+        setLoading(false);
+        setError("not_authenticated");
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
         const res = await fetch(
           `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          }
         );
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -163,14 +211,18 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
         if (!cancelled) setData(row as ApplicationRecord);
       } catch (e) {
         if (cancelled) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setError(e instanceof Error ? e.message : "Could not load this application.");
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    void loadApplication();
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [applicationId]);
 
@@ -272,14 +324,26 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
         </div>
 
         <dl className="px-8 pb-2 pt-2">
-          <DetailRow label="Application ID">
-            <IdLine id={data.id} />
-          </DetailRow>
-          {data.applicant_id ? (
-            <DetailRow label="Applicant ID">
-              <IdLine id={data.applicant_id} />
+          {(() => {
+            const applicantName = [data.applicant_first_name, data.applicant_last_name]
+              .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+              .join(" ")
+              .trim();
+            return applicantName ? (
+              <DetailRow label="Applicant">{applicantName}</DetailRow>
+            ) : null;
+          })()}
+          {data.applicant_email ? (
+            <DetailRow label="Email">
+              <a
+                href={`mailto:${data.applicant_email}`}
+                className="text-[#2f76b7] underline underline-offset-2 hover:text-[#2563a8]"
+              >
+                {data.applicant_email}
+              </a>
             </DetailRow>
           ) : null}
+          <DetailRow label="Admission term">{termText(data.admission_term)}</DetailRow>
           <DetailRow label="Sponsorship">{data.sponsorship_type}</DetailRow>
           <DetailRow label="Stream">{data.stream}</DetailRow>
           <DetailRow label="Final decision">
@@ -318,6 +382,51 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
             />
           </DetailRow>
         </dl>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
+          <div>
+            <h2 className="text-[15px] font-bold text-[#2a66a7]">UAT result</h2>
+            <p className="mt-1 text-[12px] text-[#5a5a5a]">
+              Look up the testing center result tied to this application.
+            </p>
+          </div>
+          {data.uat_id ? (
+            <button
+              type="button"
+              onClick={handleCheckUat}
+              disabled={uatLoading}
+              className="h-[36px] rounded-md bg-[#3f79b5] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+            >
+              {uatLoading ? "Checking…" : uatResult ? "Refresh result" : "Check result"}
+            </button>
+          ) : null}
+        </div>
+        <div className="px-8 py-4">
+        
+          {uatError ? (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800" role="alert">
+              {uatError}
+            </div>
+          ) : null}
+          {uatResult ? (
+            <>
+              <DetailRow label="Score">
+                <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
+                  {uatResult.score}
+                </span>
+              </DetailRow>
+              <DetailRow label="Message">
+                <span className="text-[14px] text-[#1a1a1a]">{uatResult.message}</span>
+              </DetailRow>
+            </>
+          ) : !data.uat_id ? (
+            <p className="mt-2 text-[13px] text-[#5a5a5a]">
+            The Applicant has not taken the UAT test yet.
+          </p>
+          ) : null}
+        </div>
       </div>
 
       {extra ? (

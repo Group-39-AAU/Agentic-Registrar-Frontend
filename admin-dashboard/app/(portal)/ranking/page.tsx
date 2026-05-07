@@ -176,7 +176,17 @@ export default function RankingPage() {
         >
           Run Ranking
         </button>
-        <JsonResult state={rankingRun} />
+        {rankingRun.loading ? (
+          <p className="text-[13px] text-[#5a5a5a]">Running ranking pipeline…</p>
+        ) : rankingRun.error ? (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+            {rankingRun.error}
+          </p>
+        ) : rankingRun.data ? (
+          <p className="text-[13px] font-semibold text-green-700">
+            Ranking ran successfully.
+          </p>
+        ) : null}
       </Section>
 
       <Section
@@ -326,12 +336,12 @@ export default function RankingPage() {
               <thead>
                 <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
                   <th className="px-3 py-2">Rank</th>
-                  <th className="px-3 py-2">Application ID</th>
+                  <th className="px-3 py-2">Applicant</th>
                   <th className="px-3 py-2">Category</th>
                   <th className="px-3 py-2">Final Score</th>
                   <th className="px-3 py-2">Assigned</th>
                   <th className="px-3 py-2">Stream</th>
-                  <th className="px-3 py-2">Program ID</th>
+                  <th className="px-3 py-2">Department</th>
                 </tr>
               </thead>
               <tbody>
@@ -342,16 +352,12 @@ export default function RankingPage() {
                       <td className="px-3 py-2 font-semibold text-[#2f76b7]">
                         {typeof r.rank_position === "number" ? r.rank_position : "—"}
                       </td>
-                      <td className="max-w-[180px] truncate px-3 py-2 font-mono text-[11px]" title={String(r.application_id ?? "")}>
-                        {String(r.application_id ?? "—")}
-                      </td>
+                      <td className="px-3 py-2">{String(r.applicant_full_name ?? "—")}</td>
                       <td className="px-3 py-2">{String(r.category ?? "—")}</td>
                       <td className="px-3 py-2">{typeof r.final_score === "number" ? r.final_score : "—"}</td>
                       <td className="px-3 py-2">{r.is_assigned ? "Yes" : "No"}</td>
                       <td className="px-3 py-2">{String(r.assigned_stream ?? "—")}</td>
-                      <td className="max-w-[180px] truncate px-3 py-2 font-mono text-[11px]" title={String(r.assigned_program_id ?? "")}>
-                        {String(r.assigned_program_id ?? "—")}
-                      </td>
+                      <td className="px-3 py-2">{String(r.assigned_program_department ?? "—")}</td>
                     </tr>
                   );
                 })}

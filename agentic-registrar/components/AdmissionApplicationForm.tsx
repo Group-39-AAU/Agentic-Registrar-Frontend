@@ -9,7 +9,6 @@ import {
   getStoredAccessToken,
   initiateApplicationPayment,
   submitUndergraduateApplication,
-  validateUndergraduateApplication,
   verifyCredentialsUndergraduateApplication,
   type PaymentInitiateResponse,
   type ProgramItem,
@@ -32,7 +31,13 @@ function CopyIcon({ className }: { className?: string }) {
   );
 }
 
-export default function AdmissionApplicationForm() {
+type AdmissionApplicationFormProps = {
+  admissionTermId: string;
+};
+
+export default function AdmissionApplicationForm({
+  admissionTermId,
+}: AdmissionApplicationFormProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -42,7 +47,6 @@ export default function AdmissionApplicationForm() {
     programChoice2: "",
     programChoice3: "",
     admissionNumber: "",
-    admissionTerm: "Fall 2026",
   });
   const [programs, setPrograms] = useState<ProgramItem[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
@@ -197,8 +201,8 @@ export default function AdmissionApplicationForm() {
       setSubmitError("Admission number is required.");
       return;
     }
-    if (!formData.admissionTerm.trim()) {
-      setSubmitError("Admission term is required.");
+    if (!admissionTermId) {
+      setSubmitError("Please select an admission term.");
       return;
     }
 
@@ -210,7 +214,7 @@ export default function AdmissionApplicationForm() {
           sponsorship_type: formData.sponsorshipType,
           stream: formData.stream,
           admission_number: formData.admissionNumber.trim(),
-          admission_term: formData.admissionTerm.trim(),
+          admission_term_id: admissionTermId,
           program_choice_1_id: formData.programChoice1,
           program_choice_2_id: formData.programChoice2,
           program_choice_3_id: formData.programChoice3,
@@ -278,7 +282,6 @@ export default function AdmissionApplicationForm() {
         { payment_reference: ref, status: "COMPLETED" },
         token
       );
-      await validateUndergraduateApplication(createdApplicationId, token);
       await verifyCredentialsUndergraduateApplication(createdApplicationId, token);
       setPaymentModalOpen(false);
       router.push("/admissions/apply/success");
@@ -651,16 +654,7 @@ export default function AdmissionApplicationForm() {
                   }))
                 }
               />
-              <FormInput
-                label="Admission term"
-                name="admissionTerm"
-                placeholder="Fall 2026"
-                value={formData.admissionTerm}
-                required
-                onChange={(e) =>
-                  setFormData((p) => ({ ...p, admissionTerm: e.target.value }))
-                }
-              />
+             
             </div>
 
             <div className="mt-6 flex justify-between">

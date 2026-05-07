@@ -1,27 +1,31 @@
 "use client";
 
-import { JsonResult, RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
+import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { useState } from "react";
 
 type ReviewRow = {
+  rank_position?: number;
   application_id?: string;
   id?: string;
   admission_number?: string;
-  applicant_name?: string;
+  student_name?: string;
   sponsorship_type?: string;
   stream?: string;
   status?: string;
   current_status?: string;
-  score?: number;
+  final_score?: number;
 };
+
+type SponsorshipFilter = "ALL" | "SELF_SPONSORED" | "GOVERNMENT";
 
 export default function ReviewPage() {
   const router = useRouter();
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [sponsorshipFilter, setSponsorshipFilter] = useState<SponsorshipFilter>("ALL");
 
   const [students, setStudents] = useState<RequestState>(initialState);
   const [decisionResult, setDecisionResult] = useState<RequestState>(initialState);
@@ -82,19 +86,22 @@ export default function ReviewPage() {
   };
 
   useEffect(() => {
-    let cancelled = false;
     (async () => {
       await loadStudents();
     })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  const rows = useMemo(() => {
+  const allRows = useMemo(() => {
     if (Array.isArray(students.data)) return students.data as ReviewRow[];
     return [];
   }, [students.data]);
+
+  const rows = useMemo(() => {
+    if (sponsorshipFilter === "ALL") return allRows;
+    return allRows.filter(
+      (r) => String(r.sponsorship_type ?? "").toUpperCase() === sponsorshipFilter
+    );
+  }, [allRows, sponsorshipFilter]);
 
   const allIds = useMemo(
     () => rows.map((row) => String(row.application_id ?? row.id ?? "")).filter(Boolean),
@@ -137,8 +144,27 @@ export default function ReviewPage() {
     <div className="grid gap-5">
       <Section
         title="Students For Review"
-        subtitle="Review queue (SELF_SPONSORED and GOVERNMENT auto-loaded)"
+        subtitle="Both sponsorship queues load together; use the filter to narrow the list."
       >
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <label htmlFor="sponsorship-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
+            Sponsorship
+          </label>
+          <select
+            id="sponsorship-filter"
+            value={sponsorshipFilter}
+            onChange={(e) => {
+              setSponsorshipFilter(e.target.value as SponsorshipFilter);
+              setSelectedIds([]);
+            }}
+            className="h-[36px] min-w-[200px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] text-[#1a1a1a] outline-none"
+          >
+            <option value="ALL">All</option>
+            <option value="SELF_SPONSORED">Self-sponsored</option>
+            <option value="GOVERNMENT">Government</option>
+          </select>
+        </div>
+
         {selectedIds.length > 0 ? (
           <div className="mb-3 flex items-center justify-between rounded-md border border-[#c7d9ed] bg-[#eef4ff] px-3 py-2">
             <p className="text-[12px] text-[#2a66a7]">
@@ -156,15 +182,25 @@ export default function ReviewPage() {
         ) : null}
 
         <p className="mb-3 text-[13px] text-[#5a5a5a]">
-          Total records: <span className="font-semibold text-[#2f76b7]">{rows.length}</span>
+          Showing <span className="font-semibold text-[#2f76b7]">{rows.length}</span>
+          {sponsorshipFilter !== "ALL" ? (
+            <>
+              {" "}
+              of <span className="font-semibold text-[#2f76b7]">{allRows.length}</span> loaded
+            </>
+          ) : null}
         </p>
         {students.loading ? (
           <p className="text-[13px] text-[#5a5a5a]">Loading review queue…</p>
         ) : students.error ? (
-          <JsonResult state={students} />
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+            {students.error}
+          </p>
         ) : rows.length === 0 ? (
           <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-6 text-center text-[13px] text-[#5a5a5a]">
-            No students awaiting review.
+            {allRows.length > 0 && sponsorshipFilter !== "ALL"
+              ? "No students match this sponsorship filter."
+              : "No students awaiting review."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -182,13 +218,13 @@ export default function ReviewPage() {
                       aria-label="Select all students"
                     />
                   </th>
+                  <th className="px-4 py-3">Ranking</th>
                   <th className="px-4 py-3">Admission #</th>
                   <th className="px-4 py-3">Applicant</th>
                   <th className="px-4 py-3">Sponsorship</th>
                   <th className="px-4 py-3">Stream</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Score</th>
-                  <th className="px-4 py-3">Application ID</th>
                   <th className="px-4 py-3">Action</th>
                 </tr>
               </thead>
@@ -228,17 +264,19 @@ export default function ReviewPage() {
                           aria-label={`Select ${row.admission_number ?? id}`}
                         />
                       </td>
+                     
+                      <td className="px-4 py-3">{row.rank_position ?? "—"}</td>
                       <td className="px-4 py-3 font-mono text-[#2f76b7]">
                         {row.admission_number ?? "—"}
                       </td>
-                      <td className="px-4 py-3">{row.applicant_name ?? "—"}</td>
+                      <td className="px-4 py-3">{row.student_name ?? "—"}</td>
                       <td className="px-4 py-3">{row.sponsorship_type ?? "—"}</td>
                       <td className="px-4 py-3">{row.stream ?? "—"}</td>
                       <td className="px-4 py-3">{row.status ?? row.current_status ?? "—"}</td>
-                      <td className="px-4 py-3">{typeof row.score === "number" ? row.score : "—"}</td>
-                      <td className="max-w-[220px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]" title={id}>
-                        {id || "—"}
+                      <td className="px-4 py-3">
+                        {typeof row.final_score === "number" ? row.final_score : "—"}
                       </td>
+                     
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -260,7 +298,15 @@ export default function ReviewPage() {
         )}
         <div className="mt-4">
           <p className="mb-1 text-[12px] font-semibold text-[#3a3a3a]">Decision Response</p>
-          <JsonResult state={decisionResult} />
+          {decisionResult.loading ? (
+            <p className="text-[13px] text-[#5a5a5a]">Deciding…</p>
+          ) : decisionResult.error ? (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {decisionResult.error}
+            </p>
+          ) : decisionResult.data ? (
+            <p className="text-[13px] font-semibold text-green-700">Decision made successfully.</p>
+          ) : null}
         </div>
       </Section>
     </div>
