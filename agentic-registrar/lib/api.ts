@@ -166,7 +166,6 @@ export type UndergraduateApplicationRecord = {
 export type TestingCenterCallbackResponse = {
   uat_id: string;
   score: number;
-  message: string;
 };
 
 /** GET /api/v1/testing-center/callback/{uat_id} — returns UAT score/message */
@@ -178,7 +177,7 @@ export async function fetchTestingCenterCallback(
   const headers: HeadersInit = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(
-    `${API_BASE}/api/v1/testing-center/callback/${encodeURIComponent(uatId)}`,
+    `${API_BASE}/api/v1/testing-center/records/${encodeURIComponent(uatId)}`,
     { headers }
   );
   const data = await res.json().catch(() => ({}));
@@ -402,26 +401,26 @@ export async function callbackApplicationPayment(
 //   return data;
 // }
 
-/** POST /api/v1/undergraduate/applications/{application_id}/verify-credentials */
-export async function verifyCredentialsUndergraduateApplication(
-  applicationId: string,
-  accessToken?: string | null
-): Promise<unknown> {
-  const token = accessToken ?? getStoredAccessToken();
-  if (!token) {
-    throw new ApiError(401, { detail: "Not authenticated" });
-  }
-  const res = await fetch(
-    `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}/verify-credentials`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data);
-  return data;
-}
+// /** POST /api/v1/undergraduate/applications/{application_id}/verify-credentials */
+// export async function verifyCredentialsUndergraduateApplication(
+//   applicationId: string,
+//   accessToken?: string | null
+// ): Promise<unknown> {
+//   const token = accessToken ?? getStoredAccessToken();
+//   if (!token) {
+//     throw new ApiError(401, { detail: "Not authenticated" });
+//   }
+//   const res = await fetch(
+//     `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}/verify-credentials`,
+//     {
+//       method: "POST",
+//       headers: { Authorization: `Bearer ${token}` },
+//     }
+//   );
+//   const data = await res.json().catch(() => ({}));
+//   if (!res.ok) throw new ApiError(res.status, data);
+//   return data;
+// }
 
 export async function fetchTerms(): Promise<admissionTerm[]> {
   const res = await fetch(`${API_BASE}/api/v1/undergraduate/admission-terms/open`);

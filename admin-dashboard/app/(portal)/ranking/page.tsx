@@ -21,7 +21,7 @@ function toTermText(value: unknown): string {
 }
 
 export default function RankingPage() {
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState("ALL");
   const [terms, setTerms] = useState<AdmissionTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);
   const [selectedRunTermId, setSelectedRunTermId] = useState("");
@@ -133,6 +133,23 @@ export default function RankingPage() {
 
   const isSummary404 = Boolean(summary.error && /\(HTTP 404\)/.test(summary.error));
   const isResults404 = Boolean(results.error && /\(HTTP 404\)/.test(results.error));
+  const isAllSelected = !category.trim() || category.trim().toUpperCase() === "ALL";
+
+  const governmentRows = useMemo(() => {
+    if (!isAllSelected) return [];
+    return resultRows.filter((row) => {
+      const r = row as Record<string, unknown>;
+      return String(r.category ?? "").toUpperCase() === "GOVERNMENT";
+    });
+  }, [isAllSelected, resultRows]);
+
+  const selfSponsoredRows = useMemo(() => {
+    if (!isAllSelected) return [];
+    return resultRows.filter((row) => {
+      const r = row as Record<string, unknown>;
+      return String(r.category ?? "").toUpperCase() === "SELF_SPONSORED";
+    });
+  }, [isAllSelected, resultRows]);
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -293,12 +310,15 @@ export default function RankingPage() {
               </option>
             ))}
           </select>
-          <input
+          <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            placeholder="category (optional)"
             className="h-[36px] rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none"
-          />
+          >
+            <option value="ALL">ALL</option>
+            <option value="SELF_SPONSORED">SELF_SPONSORED</option>
+            <option value="GOVERNMENT">GOVERNMENT</option>
+          </select>
           <button
             type="button"
             onClick={() => {
@@ -306,7 +326,11 @@ export default function RankingPage() {
                 setResults({ loading: false, error: "Admission term is required.", data: null });
                 return;
               }
-              const query = category.trim() ? `?category=${encodeURIComponent(category.trim())}` : "";
+              const selectedCategory = category.trim().toUpperCase();
+              const query =
+                selectedCategory && selectedCategory !== "ALL"
+                  ? `?category=${encodeURIComponent(selectedCategory)}`
+                  : "";
               callApi(
                 setResults,
                 `/api/v1/undergraduate/ranking/results/${encodeURIComponent(selectedResultsTermId.trim())}${query}`,
@@ -330,6 +354,94 @@ export default function RankingPage() {
           <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-6 text-center text-[13px] text-[#5a5a5a]">
             No ranking results found for the selected term.
           </p>
+        ) : resultRows.length > 0 && isAllSelected ? (
+          <div className="space-y-8">
+            <div>
+              <h3 className="mb-2 text-[13px] font-semibold text-[#2f76b7]">Government</h3>
+              {governmentRows.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                        <th className="px-3 py-2">Rank</th>
+                        <th className="px-3 py-2">Applicant</th>
+                        <th className="px-3 py-2">Category</th>
+                        <th className="px-3 py-2">Final Score</th>
+                        <th className="px-3 py-2">Assigned</th>
+                        <th className="px-3 py-2">Stream</th>
+                        <th className="px-3 py-2">Department</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {governmentRows.map((row, idx) => {
+                        const r = row as Record<string, unknown>;
+                        return (
+                          <tr key={String(r.id ?? `gov-${idx}`)} className="border-b border-gray-100">
+                            <td className="px-3 py-2 font-semibold text-[#2f76b7]">
+                              {typeof r.rank_position === "number" ? r.rank_position : "—"}
+                            </td>
+                            <td className="px-3 py-2">{String(r.applicant_full_name ?? "—")}</td>
+                            <td className="px-3 py-2">{String(r.category ?? "—")}</td>
+                            <td className="px-3 py-2">{typeof r.final_score === "number" ? r.final_score : "—"}</td>
+                            <td className="px-3 py-2">{r.is_assigned ? "Yes" : "No"}</td>
+                            <td className="px-3 py-2">{String(r.assigned_stream ?? "—")}</td>
+                            <td className="px-3 py-2">{String(r.assigned_program_department ?? "—")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-3 text-[13px] text-[#5a5a5a]">
+                  No government applicants found.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-[13px] font-semibold text-[#2f76b7]">Self Sponsored</h3>
+              {selfSponsoredRows.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                        <th className="px-3 py-2">Rank</th>
+                        <th className="px-3 py-2">Applicant</th>
+                        <th className="px-3 py-2">Category</th>
+                        <th className="px-3 py-2">Final Score</th>
+                        <th className="px-3 py-2">Assigned</th>
+                        <th className="px-3 py-2">Stream</th>
+                        <th className="px-3 py-2">Department</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selfSponsoredRows.map((row, idx) => {
+                        const r = row as Record<string, unknown>;
+                        return (
+                          <tr key={String(r.id ?? `self-${idx}`)} className="border-b border-gray-100">
+                            <td className="px-3 py-2 font-semibold text-[#2f76b7]">
+                              {typeof r.rank_position === "number" ? r.rank_position : "—"}
+                            </td>
+                            <td className="px-3 py-2">{String(r.applicant_full_name ?? "—")}</td>
+                            <td className="px-3 py-2">{String(r.category ?? "—")}</td>
+                            <td className="px-3 py-2">{typeof r.final_score === "number" ? r.final_score : "—"}</td>
+                            <td className="px-3 py-2">{r.is_assigned ? "Yes" : "No"}</td>
+                            <td className="px-3 py-2">{String(r.assigned_stream ?? "—")}</td>
+                            <td className="px-3 py-2">{String(r.assigned_program_department ?? "—")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-3 text-[13px] text-[#5a5a5a]">
+                  No self-sponsored applicants found.
+                </p>
+              )}
+            </div>
+          </div>
         ) : resultRows.length > 0 ? (
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">

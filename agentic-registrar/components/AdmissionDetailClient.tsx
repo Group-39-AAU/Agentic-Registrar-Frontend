@@ -11,7 +11,6 @@ import {
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
   initiateApplicationPayment,
-  verifyCredentialsUndergraduateApplication,
   type PaymentInitiateResponse,
   type TestingCenterCallbackResponse,
   type UndergraduateApplicationRecord,
@@ -240,7 +239,6 @@ export default function AdmissionDetailClient({
         payment_reference: ref,
         status: "COMPLETED",
       });
-      await verifyCredentialsUndergraduateApplication(applicationId).catch(() => null);
       setPaymentModalOpen(false);
       setPaymentInit(null);
       await reloadApplication();
@@ -278,6 +276,17 @@ export default function AdmissionDetailClient({
       setUatLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!data?.uat_id) {
+      setUatResult(null);
+      setUatError(null);
+      setUatLoading(false);
+      return;
+    }
+    void handleCheckUat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.uat_id]);
 
   if (loading) {
     return (
@@ -478,19 +487,11 @@ export default function AdmissionDetailClient({
               Look up the testing center result tied to this application.
             </p>
           </div>
-          {data.uat_id ? (
-            <button
-              type="button"
-              onClick={handleCheckUat}
-              disabled={uatLoading}
-              className="h-[36px] rounded-md bg-[#3f79b5] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
-            >
-              {uatLoading ? "Checking…" : uatResult ? "Refresh result" : "Check result"}
-            </button>
-          ) : null}
         </div>
         <div className="px-8 py-4">
-          
+          {uatLoading ? (
+            <p className="mt-2 text-[13px] text-[#5a5a5a]">Checking UAT result...</p>
+          ) : null}
           {uatError ? (
             <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800" role="alert">
               {uatError}
@@ -504,7 +505,7 @@ export default function AdmissionDetailClient({
                 </span>
               </DetailRow>
               <DetailRow label="Message">
-                <span className="text-[14px] text-[#1a1a1a]">{uatResult.message}</span>
+                <span className="text-[14px] text-[#1a1a1a]">The UAT result is not available yet.</span>
               </DetailRow>
             </>
           ) : !data.uat_id ? (

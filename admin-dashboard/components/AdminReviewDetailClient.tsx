@@ -263,19 +263,6 @@ export default function AdminReviewDetailClient({ applicationId }: { application
             <DetailRow label="2nd choice">{data.program_choice_2 ?? "—"}</DetailRow>
             <DetailRow label="3rd choice">{data.program_choice_3 ?? "—"}</DetailRow>
 
-            <DetailRow label="AI recommendation">
-              {data.ai_recommended_decision ? (
-                <StatusPill
-                  value={data.ai_recommended_decision}
-                  tone={statusTone(data.ai_recommended_decision)}
-                />
-              ) : (
-                "—"
-              )}
-            </DetailRow>
-            <DetailRow label="AI confidence">
-              {typeof data.ai_confidence === "number" ? data.ai_confidence : "—"}
-            </DetailRow>
           </dl>
         ) : null}
       </div>
@@ -301,8 +288,8 @@ export default function AdminReviewDetailClient({ applicationId }: { application
               onChange={(e) => setDecision(e.target.value as DecisionValue)}
               className="h-[36px] w-full max-w-[260px] rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none"
             >
-              <option value="APPROVED">APPROVED</option>
-              <option value="REJECTED">REJECTED</option>
+              <option value="ADMIT">ADMIT</option>
+              <option value="REJECT">REJECT</option>
             </select>
           </div>
 

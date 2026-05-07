@@ -13,6 +13,7 @@ type ReviewRow = {
   student_name?: string;
   sponsorship_type?: string;
   stream?: string;
+  assigned_program_name?: string;
   status?: string;
   current_status?: string;
   final_score?: number;
@@ -267,6 +268,7 @@ export default function ReviewPage() {
                   <th className="px-4 py-3">Applicant</th>
                   <th className="px-4 py-3">Sponsorship</th>
                   <th className="px-4 py-3">Stream</th>
+                  <th className="px-4 py-3">Department</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Score</th>
                   <th className="px-4 py-3">Action</th>
@@ -316,6 +318,7 @@ export default function ReviewPage() {
                       <td className="px-4 py-3">{row.student_name ?? "—"}</td>
                       <td className="px-4 py-3">{row.sponsorship_type ?? "—"}</td>
                       <td className="px-4 py-3">{row.stream ?? "—"}</td>
+                      <td className="px-4 py-3">{row.assigned_program_name ?? "—"}</td>
                       <td className="px-4 py-3">{row.status ?? row.current_status ?? "—"}</td>
                       <td className="px-4 py-3">
                         {typeof row.final_score === "number" ? row.final_score : "—"}
