@@ -17,7 +17,8 @@ export const IMPLEMENTED_LINKS = new Set([
 ]);
 
 export function getFeatureHref(name: string) {
-  if (name === "Home") return "http://localhost:3000/portal/home";
+  if (name === "Home") return "/portal/home";
+  if (name === "Basic Information") return "/portal/basic-information";
   if (name === "Course Registration") return "/portal/course-registration";
   if (name === "Grade Report" || name === "Grade & Results" || name === "Grade and Results") return "/portal/grade-report";
   if (IMPLEMENTED_LINKS.has(name)) return "#";

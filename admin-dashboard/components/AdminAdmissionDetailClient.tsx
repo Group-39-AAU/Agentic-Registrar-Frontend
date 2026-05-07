@@ -43,7 +43,6 @@ type ApplicationRecord = {
 type UatResult = {
   uat_id: string;
   score: number;
-  message: string;
 };
 
 function termText(value: unknown): string {
@@ -148,7 +147,7 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
     setUatLoading(true);
     try {
       const res = await fetch(
-        `${API_BASE}/api/v1/testing-center/callback/${encodeURIComponent(data.uat_id)}`,
+        `${API_BASE}/api/v1/testing-center/records/${encodeURIComponent(data.uat_id)}`,
         token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
       );
       const payload = await res.json().catch(() => ({}));
@@ -166,6 +165,15 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
       setUatLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!data?.uat_id) return;
+    const timer = window.setTimeout(() => {
+      void handleCheckUat();
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.uat_id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -392,25 +400,21 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
               Look up the testing center result tied to this application.
             </p>
           </div>
-          {data.uat_id ? (
-            <button
-              type="button"
-              onClick={handleCheckUat}
-              disabled={uatLoading}
-              className="h-[36px] rounded-md bg-[#3f79b5] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
-            >
-              {uatLoading ? "Checking…" : uatResult ? "Refresh result" : "Check result"}
-            </button>
-          ) : null}
         </div>
         <div className="px-8 py-4">
-        
+          {uatLoading ? (
+            <p className="mt-2 text-[13px] text-[#5a5a5a]">Checking UAT result...</p>
+          ) : null}
           {uatError ? (
             <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800" role="alert">
               {uatError}
             </div>
           ) : null}
-          {uatResult ? (
+          {!data.uat_id ? (
+            <p className="mt-2 text-[13px] text-[#5a5a5a]">
+              The Applicant has not taken the UAT test yet.
+            </p>
+          ) : uatResult ? (
             <>
               <DetailRow label="Score">
                 <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
@@ -418,13 +422,9 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
                 </span>
               </DetailRow>
               <DetailRow label="Message">
-                <span className="text-[14px] text-[#1a1a1a]">{uatResult.message}</span>
+                <span className="text-[14px] text-[#1a1a1a]">UAT result is not available yet.</span>
               </DetailRow>
             </>
-          ) : !data.uat_id ? (
-            <p className="mt-2 text-[13px] text-[#5a5a5a]">
-            The Applicant has not taken the UAT test yet.
-          </p>
           ) : null}
         </div>
       </div>

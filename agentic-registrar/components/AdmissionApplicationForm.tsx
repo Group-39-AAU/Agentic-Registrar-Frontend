@@ -9,7 +9,6 @@ import {
   getStoredAccessToken,
   initiateApplicationPayment,
   submitUndergraduateApplication,
-  verifyCredentialsUndergraduateApplication,
   type PaymentInitiateResponse,
   type ProgramItem,
 } from "@/lib/api";
@@ -282,7 +281,6 @@ export default function AdmissionApplicationForm({
         { payment_reference: ref, status: "COMPLETED" },
         token
       );
-      await verifyCredentialsUndergraduateApplication(createdApplicationId, token);
       setPaymentModalOpen(false);
       router.push("/admissions/apply/success");
     } catch (err) {
