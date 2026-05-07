@@ -155,7 +155,6 @@ export default function ApplicationsPage() {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Payment</th>
                 <th className="px-4 py-3">Updated</th>
-                <th className="px-4 py-3">ID</th>
               </tr>
             </thead>
             <tbody>
@@ -191,9 +190,7 @@ export default function ApplicationsPage() {
                     <td className="px-4 py-3 text-[12px] text-[#5a5a5a]">
                       {row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}
                     </td>
-                    <td className="max-w-[220px] truncate px-4 py-3 font-mono text-[11px] text-[#5a5a5a]" title={row.id}>
-                      {row.id ?? "—"}
-                    </td>
+                    
                   </tr>
                 ))
               )}
