@@ -7,6 +7,7 @@ const navItems = [
   { href: "/applications", label: "Applications" },
   { href: "/ranking", label: "Ranking" },
   { href: "/review", label: "Review" },
+  { href: "/flags", label: "Flags" },
   { href: "/enrollment", label: "Enrollment" },
 ];
 
