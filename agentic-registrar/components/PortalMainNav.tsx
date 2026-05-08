@@ -20,6 +20,7 @@ export function getFeatureHref(name: string) {
   if (name === "Home") return "/portal/home";
   if (name === "Basic Information") return "/portal/basic-information";
   if (name === "Course Registration") return "/portal/course-registration";
+  if (name === "Cost Sharing Form") return "/portal/course-registration/cost-sharing";
   if (name === "Grade Report" || name === "Grade & Results" || name === "Grade and Results") return "/portal/grade-report";
   if (IMPLEMENTED_LINKS.has(name)) return "#";
   return `/portal/feature-preview?name=${encodeURIComponent(name)}`;
