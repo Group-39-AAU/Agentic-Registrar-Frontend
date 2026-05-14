@@ -263,6 +263,19 @@ export default function AdminReviewDetailClient({ applicationId }: { application
             <DetailRow label="2nd choice">{data.program_choice_2 ?? "—"}</DetailRow>
             <DetailRow label="3rd choice">{data.program_choice_3 ?? "—"}</DetailRow>
 
+            <DetailRow label="AI recommended decision">
+              {data.ai_recommended_decision &&
+              String(data.ai_recommended_decision).trim() !== "" &&
+              data.ai_recommended_decision !== "string" ? (
+                <StatusPill
+                  value={String(data.ai_recommended_decision)}
+                  tone={statusTone(data.ai_recommended_decision)}
+                />
+              ) : (
+                "—"
+              )}
+            </DetailRow>
+
           </dl>
         ) : null}
       </div>
