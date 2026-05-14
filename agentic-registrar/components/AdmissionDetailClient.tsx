@@ -11,6 +11,7 @@ import {
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
   initiateApplicationPayment,
+  submitApplicationCorrections,
   type PaymentInitiateResponse,
   type TestingCenterCallbackResponse,
   type UndergraduateApplicationRecord,
@@ -148,6 +149,13 @@ export default function AdmissionDetailClient({
   const [uatLoading, setUatLoading] = useState(false);
   const [uatError, setUatError] = useState<string | null>(null);
   const [uatResult, setUatResult] = useState<TestingCenterCallbackResponse | null>(null);
+  const [correctionAdmissionNumber, setCorrectionAdmissionNumber] = useState("");
+  const [correctionFirstName, setCorrectionFirstName] = useState("");
+  const [correctionLastName, setCorrectionLastName] = useState("");
+  const [correctionLoading, setCorrectionLoading] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [correctionSuccessModalOpen, setCorrectionSuccessModalOpen] = useState(false);
+  const [correctionSubmitted, setCorrectionSubmitted] = useState(false);
 
   const reloadApplication = async () => {
     try {
@@ -258,6 +266,36 @@ export default function AdmissionDetailClient({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       setPaymentError("Could not copy. Please copy the reference manually.");
+    }
+  };
+
+  const handleSubmitCorrections = async () => {
+    const admissionNumber = correctionAdmissionNumber.trim();
+    const firstName = correctionFirstName.trim();
+    const lastName = correctionLastName.trim();
+
+    if (!admissionNumber || !firstName || !lastName) {
+      setCorrectionError("Admission number, first name, and last name are all required.");
+      return;
+    }
+
+    setCorrectionLoading(true);
+    setCorrectionError(null);
+    try {
+      await submitApplicationCorrections(applicationId, {
+        admission_number: admissionNumber,
+        first_name: firstName,
+        last_name: lastName,
+      });
+      setCorrectionSubmitted(true);
+      setCorrectionSuccessModalOpen(true);
+      await reloadApplication();
+    } catch (err) {
+      setCorrectionError(
+        err instanceof ApiError ? err.message : "Could not submit corrections."
+      );
+    } finally {
+      setCorrectionLoading(false);
     }
   };
 
@@ -448,6 +486,77 @@ export default function AdmissionDetailClient({
         ) : null}
       </div>
 
+      {(data.current_status ?? "").toUpperCase() === "CHANGES_REQUESTED" && !correctionSubmitted ? (
+        <div className="overflow-hidden rounded-xl border border-[#f4d7aa] bg-[#fffaf0] shadow-sm">
+          <div className="border-b border-[#f0dfbf] bg-[#fff3df] px-8 py-4">
+            <h2 className="text-[15px] font-bold text-[#9a5b00]">Corrections Required</h2>
+            <p className="mt-1 text-[13px] text-[#7a5a2c]">
+              You are requested to enter the following informations correctly.
+            </p>
+          </div>
+          <div className="space-y-4 px-8 py-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label htmlFor="correction-admission-number" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
+                  Admission Number
+                </label>
+                <input
+                  id="correction-admission-number"
+                  value={correctionAdmissionNumber}
+                  onChange={(e) => setCorrectionAdmissionNumber(e.target.value)}
+                  required
+                  className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
+                />
+              </div>
+              <div>
+                <label htmlFor="correction-first-name" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
+                  First Name
+                </label>
+                <input
+                  id="correction-first-name"
+                  value={correctionFirstName}
+                  onChange={(e) => setCorrectionFirstName(e.target.value)}
+                  required
+                  className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
+                />
+              </div>
+              <div>
+                <label htmlFor="correction-last-name" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
+                  Last Name
+                </label>
+                <input
+                  id="correction-last-name"
+                  value={correctionLastName}
+                  onChange={(e) => setCorrectionLastName(e.target.value)}
+                  required
+                  className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSubmitCorrections}
+                disabled={correctionLoading}
+                className="h-[40px] rounded-md bg-[#3f79b5] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+              >
+                {correctionLoading ? "Submitting..." : "Submit Corrections"}
+              </button>
+            </div>
+
+            {correctionError ? (
+              <p
+                role="alert"
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800"
+              >
+                {correctionError}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
           <h2 className="text-[15px] font-bold text-[#2a66a7]">Program choices</h2>
@@ -504,9 +613,7 @@ export default function AdmissionDetailClient({
                   {uatResult.score}
                 </span>
               </DetailRow>
-              <DetailRow label="Message">
-                <span className="text-[14px] text-[#1a1a1a]">The UAT result is not available yet.</span>
-              </DetailRow>
+             
             </>
           ) : !data.uat_id ? (
             <p className="mt-2 text-[13px] text-[#5a5a5a]">
@@ -623,6 +730,44 @@ export default function AdmissionDetailClient({
                   className="h-[42px] min-w-[120px] rounded-lg bg-[#3f79b5] px-6 text-[14px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
                 >
                   {finalizeLoading ? "Processing…" : "Pay"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {correctionSuccessModalOpen ? (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCorrectionSuccessModalOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="correction-success-dialog-title"
+            className="w-full max-w-[440px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-gray-100 bg-gradient-to-r from-[#f0f6fc] to-white px-6 py-5">
+              <h2 id="correction-success-dialog-title" className="text-[18px] font-bold text-[#2a66a7]">
+                Corrections Submitted
+              </h2>
+            </div>
+            <div className="space-y-4 px-6 py-6">
+              <p className="text-[14px] text-[#1a1a1a]">
+                Your correction request was submitted successfully.
+              </p>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCorrectionSuccessModalOpen(false)}
+                  className="h-[40px] rounded-md bg-[#3f79b5] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-[#356e9f]"
+                >
+                  OK
                 </button>
               </div>
             </div>

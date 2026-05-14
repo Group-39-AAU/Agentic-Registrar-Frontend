@@ -2,7 +2,7 @@
 
 import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useState } from "react";
 
 type ReviewRow = {
@@ -14,12 +14,30 @@ type ReviewRow = {
   sponsorship_type?: string;
   stream?: string;
   assigned_program_name?: string;
+  /** Model suggestion (e.g. ADMIT / REJECT / WAITLIST) from review API. */
+  ai_recommended_decision?: string;
   status?: string;
   current_status?: string;
   final_score?: number;
 };
 
 type SponsorshipFilter = "ALL" | "SELF_SPONSORED" | "GOVERNMENT";
+
+/** Sent as optional `ai_recommended_decision` query param to the review students API. */
+const AI_DECISION_QUERY_VALUES = [
+  "RECOMMEND_ADMIT",
+  "RECOMMEND_REJECT",
+  "RECOMMEND_WAITLIST",
+
+] as const;
+
+type AiDecisionQueryFilter = "" | (typeof AI_DECISION_QUERY_VALUES)[number];
+
+const AI_DECISION_FILTER_LABELS: Record<(typeof AI_DECISION_QUERY_VALUES)[number], string> = {
+  RECOMMEND_ADMIT: "Recommend admit",
+  RECOMMEND_REJECT: "Recommend reject",
+  RECOMMEND_WAITLIST: "Recommend waitlist",
+};
 
 type HumanDecision = "ADMIT" | "REJECT" | "WAITLIST";
 
@@ -37,6 +55,7 @@ export default function ReviewPage() {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sponsorshipFilter, setSponsorshipFilter] = useState<SponsorshipFilter>("ALL");
+  const [aiDecisionFilter, setAiDecisionFilter] = useState<AiDecisionQueryFilter>("");
 
   const [students, setStudents] = useState<RequestState>(initialState);
   const [decisionResult, setDecisionResult] = useState<RequestState>(initialState);
@@ -47,22 +66,25 @@ export default function ReviewPage() {
   const [decisionSubmitting, setDecisionSubmitting] = useState(false);
   const [decisionFormError, setDecisionFormError] = useState<string | null>(null);
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     setStudents({ loading: true, error: null, data: null });
     try {
       const token = localStorage.getItem("admin_dashboard_token") ?? "";
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
 
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const buildUrl = (sponsorshipType: "SELF_SPONSORED" | "GOVERNMENT") => {
+        const url = new URL(`${base}/api/v1/undergraduate/review/students`);
+        url.searchParams.set("sponsorship_type", sponsorshipType);
+        const ai = aiDecisionFilter.trim();
+        if (ai) url.searchParams.set("ai_recommended_decision", ai);
+        return url.toString();
+      };
+
       const [selfRes, govRes] = await Promise.all([
-        fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/undergraduate/review/students?sponsorship_type=SELF_SPONSORED`,
-          { headers }
-        ),
-        fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/undergraduate/review/students?sponsorship_type=GOVERNMENT`,
-          { headers }
-        ),
+        fetch(buildUrl("SELF_SPONSORED"), { headers }),
+        fetch(buildUrl("GOVERNMENT"), { headers }),
       ]);
       const selfData = await selfRes.json().catch(() => ({}));
       const govData = await govRes.json().catch(() => ({}));
@@ -100,13 +122,13 @@ export default function ReviewPage() {
         data: null,
       });
     }
-  };
+  }, [aiDecisionFilter]);
 
   useEffect(() => {
-    (async () => {
-      await loadStudents();
-    })();
-  }, []);
+    queueMicrotask(() => {
+      void loadStudents();
+    });
+  }, [loadStudents]);
 
   const allRows = useMemo(() => {
     if (Array.isArray(students.data)) return students.data as ReviewRow[];
@@ -190,25 +212,48 @@ export default function ReviewPage() {
     <div className="grid gap-5">
       <Section
         title="Students For Review"
-        subtitle="Both sponsorship queues load together; use the filter to narrow the list."
+        subtitle="Both sponsorship queues load together. Filter by sponsorship client-side; filter by AI decision via the API (optional query parameter)."
       >
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <label htmlFor="sponsorship-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
-            Sponsorship
-          </label>
-          <select
-            id="sponsorship-filter"
-            value={sponsorshipFilter}
-            onChange={(e) => {
-              setSponsorshipFilter(e.target.value as SponsorshipFilter);
-              setSelectedIds([]);
-            }}
-            className="h-[36px] min-w-[200px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] text-[#1a1a1a] outline-none"
-          >
-            <option value="ALL">All</option>
-            <option value="SELF_SPONSORED">Self-sponsored</option>
-            <option value="GOVERNMENT">Government</option>
-          </select>
+        <div className="mb-4 flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="sponsorship-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
+              Sponsorship
+            </label>
+            <select
+              id="sponsorship-filter"
+              value={sponsorshipFilter}
+              onChange={(e) => {
+                setSponsorshipFilter(e.target.value as SponsorshipFilter);
+                setSelectedIds([]);
+              }}
+              className="h-[36px] min-w-[200px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] text-[#1a1a1a] outline-none"
+            >
+              <option value="ALL">All</option>
+              <option value="SELF_SPONSORED">Self-sponsored</option>
+              <option value="GOVERNMENT">Government</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="ai-decision-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
+              AI recommended decision
+            </label>
+            <select
+              id="ai-decision-filter"
+              value={aiDecisionFilter}
+              onChange={(e) => {
+                setAiDecisionFilter(e.target.value as AiDecisionQueryFilter);
+                setSelectedIds([]);
+              }}
+              className="h-[36px] min-w-[220px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] text-[#1a1a1a] outline-none"
+            >
+              <option value="">All (no filter)</option>
+              {AI_DECISION_QUERY_VALUES.map((v) => (
+                <option key={v} value={v}>
+                  {AI_DECISION_FILTER_LABELS[v]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {selectedIds.length > 0 ? (
@@ -234,6 +279,16 @@ export default function ReviewPage() {
               of <span className="font-semibold text-[#2f76b7]">{allRows.length}</span> loaded
             </>
           ) : null}
+          {aiDecisionFilter ? (
+            <>
+              {" "}
+              · Filter:{" "}
+              <span className="font-semibold text-[#2f76b7]">
+                {AI_DECISION_FILTER_LABELS[aiDecisionFilter as (typeof AI_DECISION_QUERY_VALUES)[number]] ??
+                  aiDecisionFilter}
+              </span>
+            </>
+          ) : null}
         </p>
         {students.loading ? (
           <p className="text-[13px] text-[#5a5a5a]">Loading review queue…</p>
@@ -245,11 +300,13 @@ export default function ReviewPage() {
           <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-6 text-center text-[13px] text-[#5a5a5a]">
             {allRows.length > 0 && sponsorshipFilter !== "ALL"
               ? "No students match this sponsorship filter."
-              : "No students awaiting review."}
+              : allRows.length === 0 && aiDecisionFilter
+                ? "No students match the selected AI recommended decision filter."
+                : "No students awaiting review."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full min-w-[980px] border-collapse text-left text-[13px]">
+            <table className="w-full min-w-[1180px] border-collapse text-left text-[13px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
                   <th className="px-4 py-3">
@@ -269,6 +326,7 @@ export default function ReviewPage() {
                   <th className="px-4 py-3">Sponsorship</th>
                   <th className="px-4 py-3">Stream</th>
                   <th className="px-4 py-3">Department</th>
+                  <th className="min-w-[140px] px-4 py-3">AI Recommended Decision</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Score</th>
                   <th className="px-4 py-3">Action</th>
@@ -319,6 +377,11 @@ export default function ReviewPage() {
                       <td className="px-4 py-3">{row.sponsorship_type ?? "—"}</td>
                       <td className="px-4 py-3">{row.stream ?? "—"}</td>
                       <td className="px-4 py-3">{row.assigned_program_name ?? "—"}</td>
+                      <td className="max-w-[220px] whitespace-normal break-words px-4 py-3 text-[12px]">
+                        {row.ai_recommended_decision != null && String(row.ai_recommended_decision).trim() !== ""
+                          ? String(row.ai_recommended_decision)
+                          : "—"}
+                      </td>
                       <td className="px-4 py-3">{row.status ?? row.current_status ?? "—"}</td>
                       <td className="px-4 py-3">
                         {typeof row.final_score === "number" ? row.final_score : "—"}

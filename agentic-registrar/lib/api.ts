@@ -354,6 +354,12 @@ export type PaymentCallbackBody = {
   status: "COMPLETED";
 };
 
+export type SubmitCorrectionsBody = {
+  admission_number: string;
+  first_name: string;
+  last_name: string;
+};
+
 /** POST /api/v1/undergraduate/applications/{application_id}/payment/callback */
 export async function callbackApplicationPayment(
   applicationId: string,
@@ -368,6 +374,32 @@ export async function callbackApplicationPayment(
     `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}/payment/callback`,
     {
       method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+/** POST /api/v1/undergraduate/applications/{application_id}/submit-corrections */
+export async function submitApplicationCorrections(
+  applicationId: string,
+  body: SubmitCorrectionsBody,
+  accessToken?: string | null
+): Promise<unknown> {
+  const token = accessToken ?? getStoredAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}/submit-corrections`,
+    {
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
