@@ -44,12 +44,12 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col bg-[#f1f5f9] font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
       <LoginTopBrand />
       <main className="mx-auto flex w-full max-w-[460px] flex-1 items-center px-5 py-8">
-        <div className="w-full rounded-xl border border-gray-200 bg-white p-6 shadow-lg">
+        <div className="aau-card w-full rounded-2xl p-7">
           <div className="mb-5 text-center">
-            <Image src="/assets/logo.png" alt="AAU" width={52} height={52} className="mx-auto h-13 w-13" />
-            <h1 className="mt-3 text-[24px] font-bold text-[#2a66a7]">Admin Login</h1>
+            <Image src="/assets/logo.png" alt="AAU" width={56} height={56} className="mx-auto h-14 w-14 drop-shadow-[0_4px_10px_rgba(31,91,148,0.25)]" />
+            <h1 className="mt-3 text-[24px] font-bold tracking-[-0.01em] text-[#2a66a7]">Admin Login</h1>
             <p className="text-[13px] text-[#5a5a5a]">
-              Sign in to access admissions operations dashboard.
+              Sign in to access the operations dashboard.
             </p>
           </div>
 
@@ -106,19 +106,19 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Username"
-              className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7]"
+              className="h-[42px] w-full rounded-md border border-[#9bb0cc] bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_100%)] px-3 text-[13px] outline-none focus:border-[#2f76b7] focus:bg-white"
             />
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
               placeholder="Password"
-              className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7]"
+              className="h-[42px] w-full rounded-md border border-[#9bb0cc] bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_100%)] px-3 text-[13px] outline-none focus:border-[#2f76b7] focus:bg-white"
             />
             <button
               type="submit"
               disabled={loading}
-              className="h-[40px] w-full rounded-md bg-[#3f79b5] text-[14px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
+              className="aau-button-primary h-[42px] w-full rounded-md text-[14px] font-semibold tracking-wide text-white"
             >
               {loading ? "Signing in..." : "Login"}
             </button>

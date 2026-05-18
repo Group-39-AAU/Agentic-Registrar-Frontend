@@ -1,8 +1,8 @@
 export default function AdminFooter() {
   return (
-    <footer className="mt-12 bg-[#3f79b5]">
+    <footer className="mt-12 bg-[linear-gradient(180deg,#4a8ac3_0%,#3f79b5_55%,#2f6699_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
       <div className="mx-auto w-full max-w-[1024px] px-5 py-10">
-        <div className="flex items-start justify-between gap-8">
+        <div className="flex flex-col items-center gap-8 md:flex-row md:items-start md:justify-between">
           <div className="flex flex-col items-center justify-center gap-2">
             <div className="grid h-[54px] w-[54px] place-items-center rounded-full border-[2px] border-white/80">
               <img src="/assets/logo.png" alt="AAU Emblem" className="h-[46px] w-[46px]" />

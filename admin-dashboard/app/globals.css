@@ -2,8 +2,168 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --aau-blue: #2f78b7;
+  --aau-blue-deep: #1f5b94;
+  --aau-red: #e04b4b;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  background: #f1f5f9;
+  background:
+    radial-gradient(1200px 600px at 100% -10%, rgba(47, 120, 183, 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(224, 75, 75, 0.04), transparent 60%),
+    #f1f5f9;
   color: #1a1a1a;
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern", "liga", "calt", "ss01";
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(47, 120, 183, 0.22);
+  color: #0e2640;
+}
+
+*:focus {
+  outline: none;
+}
+*:focus-visible {
+  outline: 2px solid rgba(47, 120, 183, 0.55);
+  outline-offset: 2px;
+  border-radius: 3px;
+  transition: outline-color 150ms ease, outline-offset 150ms ease;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(47, 120, 183, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(47, 120, 183, 0.28);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 200ms ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(47, 120, 183, 0.55);
+  background-clip: padding-box;
+}
+
+a,
+button,
+input,
+select,
+textarea,
+[role="button"] {
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02) inset;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
+select:hover,
+textarea:hover {
+  box-shadow: 0 0 0 1px rgba(47, 120, 183, 0.18) inset;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+select:focus,
+textarea:focus {
+  box-shadow:
+    0 0 0 1px rgba(47, 120, 183, 0.45) inset,
+    0 0 0 3px rgba(47, 120, 183, 0.12);
+}
+
+table {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+[role="dialog"][aria-modal="true"] {
+  animation: aau-dialog-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes aau-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.aau-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow:
+    0 1px 1px rgba(15, 23, 42, 0.04),
+    0 4px 16px -8px rgba(15, 23, 42, 0.08);
+  transition: box-shadow 240ms ease, transform 240ms ease, border-color 240ms ease;
+}
+.aau-card:hover {
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 12px 28px -12px rgba(31, 91, 148, 0.18);
+}
+
+.aau-card-flat {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+.aau-button-primary {
+  background: linear-gradient(180deg, #4a8ac3 0%, #3f79b5 55%, #356e9f 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 10px 22px -10px rgba(31, 91, 148, 0.7);
+  transition: transform 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
+}
+.aau-button-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.24) inset,
+    0 16px 28px -12px rgba(31, 91, 148, 0.85);
+}
+.aau-button-primary:disabled {
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.aau-button-secondary {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f6fa 100%);
+  border: 1px solid #c6d3de;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.aau-button-secondary:hover:not(:disabled) {
+  border-color: #9bb0cc;
+  box-shadow: 0 6px 14px -10px rgba(31, 91, 148, 0.4);
 }

@@ -225,6 +225,63 @@ export async function fetchAvailableCourses(
   return data as AvailableCoursesResponse;
 }
 
+export type AdvisoryRecommendedCourse = {
+  course_code: string;
+  title: string;
+  credit_hours: number;
+  is_core: boolean;
+  reason: string;
+  requires_override: boolean;
+};
+
+export type AdvisoryGraduationImpact = {
+  semesters_remaining: number;
+  on_track: boolean;
+  expected_graduation_semester: number;
+  delay_semesters: number;
+  critical_path_courses: string[];
+};
+
+export type AdvisoryRecommendation = {
+  recommendation_id: string;
+  student_id: string;
+  term_id: string;
+  mode: string;
+  verdict: string;
+  risk_status: "LOW" | "MEDIUM" | "HIGH" | string;
+  narrative: string;
+  recommended_courses: AdvisoryRecommendedCourse[];
+  warnings: string[];
+  graduation_impact: AdvisoryGraduationImpact;
+  filtered_recommendations: string[];
+  created_at: string;
+};
+
+/** POST /api/v1/courses/advisory/consult/pre-registration */
+export async function consultPreRegistration(
+  termId: string
+): Promise<AdvisoryRecommendation> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/advisory/consult/pre-registration`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ term_id: termId }),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  console.log(data);
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as AdvisoryRecommendation;
+}
+
 export type RegistrationInvoiceLine = {
   course_id: string;
   course_code: string;

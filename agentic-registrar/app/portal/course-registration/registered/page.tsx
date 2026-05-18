@@ -1,5 +1,6 @@
 "use client";
 
+import AdvisoryConsultPanel from "@/components/AdvisoryConsultPanel";
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
@@ -595,6 +596,10 @@ export default function RegisteredCoursesPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {showRegisterTable && termId ? (
+        <AdvisoryConsultPanel termId={termId} />
       ) : null}
 
       <PortalFooter />

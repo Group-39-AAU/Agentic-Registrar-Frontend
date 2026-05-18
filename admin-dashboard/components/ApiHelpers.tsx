@@ -70,16 +70,23 @@ export function Section({
   title,
   subtitle,
   children,
+  action,
 }: {
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4">
-        <h2 className="text-[18px] font-bold text-[#1a1a1a]">{title}</h2>
-        <p className="text-[13px] text-[#5a5a5a]">{subtitle}</p>
+    <section className="aau-card rounded-2xl p-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[20px] font-bold tracking-[-0.01em] text-[#1a1a1a]">
+            {title}
+          </h2>
+          <p className="mt-0.5 text-[13px] text-[#5a5a5a]">{subtitle}</p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       {children}
     </section>

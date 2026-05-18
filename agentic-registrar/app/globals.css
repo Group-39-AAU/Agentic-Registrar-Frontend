@@ -123,8 +123,10 @@ table {
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-/* Dialogs feel composed when they open. */
-[role="dialog"] {
+/* Modal dialogs feel composed when they open.
+   Scoped to aria-modal="true" so docked popovers (e.g. the advisor panel,
+   which uses role="dialog" aria-modal="false") manage their own animation. */
+[role="dialog"][aria-modal="true"] {
   animation: aau-dialog-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes aau-dialog-in {
