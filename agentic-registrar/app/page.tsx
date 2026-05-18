@@ -26,13 +26,13 @@ function PortalTile({
 }) {
   
   return (
-    <div className="h-[128px] w-full overflow-hidden rounded-md bg-[#2f76b7] shadow-sm">
+    <div className="group h-[128px] w-full cursor-pointer overflow-hidden rounded-md bg-[linear-gradient(135deg,#3a86c4_0%,#2f76b7_55%,#28649b_100%)] shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-16px_rgba(31,91,148,0.5)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_2px_4px_rgba(15,23,42,0.08),0_22px_36px_-18px_rgba(31,91,148,0.7)]">
       <div className="flex h-full w-full">
         <div className="flex-1 overflow-hidden rounded-r-[40%] rounded-l-none">
           <img
             src={imageUrl}
             alt={title}
-            className="h-full w-full rounded-r-[40%] rounded-l-none object-cover"
+            className="h-full w-full rounded-r-[40%] rounded-l-none object-cover transition-transform duration-500 group-hover:scale-[1.06]"
           />
         </div>
         <div className="flex-2 px-5 py-5">
@@ -86,8 +86,8 @@ export default function Home() {
      <Header/>
 
       <main className="mx-auto w-full max-w-[1150px] px-5 pb-0 pt-7 mt-2">
-        <div className="flex gap-30 items-center">
-          <div className="w-[558px]">
+        <div className="flex flex-col items-stretch gap-10 md:flex-row md:items-center md:gap-30">
+          <div className="w-full md:w-[558px]">
             <div className="flex flex-col gap-5">
               <PortalTile
                 variant="exams"
@@ -111,10 +111,10 @@ export default function Home() {
           </div>
 
           <div className="flex-1">
-            <div className="max-w-[325px]">
-              <div className="overflow-hidden bg-white">
+            <div className="mx-auto max-w-[325px]">
+              <div className="overflow-hidden rounded-md bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06),0_20px_40px_-22px_rgba(31,91,148,0.45)] ring-1 ring-black/[0.04] transition-shadow duration-300 hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_28px_50px_-22px_rgba(31,91,148,0.55)]">
                 <BuildingGraphic />
-                <div className="h-[6px] w-full bg-[#3f79b5]" />
+                <div className="h-[6px] w-full bg-[linear-gradient(90deg,#3a86c4_0%,#3f79b5_50%,#28649b_100%)]" />
                 <PortalLoginForm />
               </div>
             </div>
@@ -123,11 +123,11 @@ export default function Home() {
       </main>
 
       <footer className="mt-10 bg-[#3f79b5]">
-        <div className="mx-auto w-full max-w-[1024px] px-5 py-12">
-          <div className="flex items-start justify-between gap-8">
+        <div className="mx-auto w-full max-w-[1024px] px-5 py-8 md:py-12">
+          <div className="flex flex-col items-center gap-8 md:flex-row md:items-start md:justify-between">
             <AAUEmblem />
 
-            <div className="w-[320px] flex flex-col text-white items-center justify-center">
+            <div className="w-full md:w-[320px] flex flex-col text-white items-center justify-center">
               <div className="text-[16px] font-semibold">Quick Links</div>
               <div className="mt-2 text-[12px] font-semibold">E-Learning</div>
               <a href="#" className="mt-1 block text-[12px] text-white/90">
@@ -135,7 +135,7 @@ export default function Home() {
               </a>
             </div>
 
-            <div className="w-[220px] flex flex-col text-white items-center justify-center">
+            <div className="w-full md:w-[220px] flex flex-col text-white items-center justify-center">
               <div className="text-[16px] font-semibold">Social Media</div>
               <div className="mt-2 flex flex-col gap-1 text-[12px] text-white/90 items-center justify-center">
                 <a href="#" className="hover:text-white">

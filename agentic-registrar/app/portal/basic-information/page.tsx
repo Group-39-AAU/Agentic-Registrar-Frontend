@@ -1,55 +1,65 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
+import PortalTopStrip from "@/components/PortalTopStrip";
+import { fetchStudentMe, type StudentMeResponse } from "@/lib/api";
 
-function TopStrip() {
-  return (
-    <div className="border-b border-[#b8c7d5] bg-[linear-gradient(90deg,#eef4f8_0%,#d8e8f5_100%)] py-1">
-      <div className="mx-[70px] flex h-[96px] max-w-[1200px] items-center px-6">
-        <a href="http://localhost:3000/portal/home">
-          <img src="/assets/logo.png" alt="AAU" className="h-[100px] w-[100px]" />
-        </a>
-        <div className="ml-4">
-          <p className="text-[25px] leading-none text-[#cf2e2e]">ADDIS ABABA UNIVERSITY</p>
-          <p className="mt-1 ml-12 text-[20px] font-bold leading-none text-[#cf2e2e]">አዲስ አበባ ዩኒቨርሲቲ</p>
-          <p className="mt-1 ml-32 text-[16px] text-[#4a5a6a]">
-            Seek wisdom, Elevate Your Intellect and Serve Humanity
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+const ROMAN_YEAR = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+
+function semesterToYear(currentSemester: number): string {
+  if (!currentSemester || currentSemester < 1) return "";
+  const year = Math.ceil(currentSemester / 2);
+  return ROMAN_YEAR[year - 1] ?? String(year);
 }
 
+// TopStrip moved to shared component PortalTopStrip.
+
 export default function BasicInformationPage() {
+  const [profile, setProfile] = useState<StudentMeResponse | null>(null);
+  const [email, setEmail] = useState("");
+
   useEffect(() => {
-    document.title = "Basic Information | Addis Ababa University";
+    let cancelled = false;
+    fetchStudentMe()
+      .then((data) => {
+        if (cancelled) return;
+        setProfile(data);
+        setEmail(data.email ?? "");
+      })
+      .catch(() => {
+        // Keep placeholder values if the request fails.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const yearLabel = profile ? semesterToYear(profile.current_semester) : "";
 
   return (
     <div className="flex min-h-screen flex-col bg-[#ffffff] font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
-      <TopStrip />
+      <PortalTopStrip />
       <PortalMainNav />
 
       <main className="flex-1">
-        <div className="flex gap-5">
+        <div className="flex flex-col gap-5 md:flex-row">
           <div className="pt-[8px]"><PortalSideMenu /></div>
 
-          <section className="ml-[115px] flex-1">
-            <div className="max-w-[1024px] bg-white px-6 py-2 text-[16px]">
-              <h1 className="text-[24px] font-bold text-[#1f1f1f]">Basic Information</h1>
-              <div className="color-[#000000] mb-10" style={{height: "3px", width:"100%"}}></div>
-              <div className="flex items-start justify-start gap-[150px]">
-                <div className="w-full max-w-[433px] flex-1">
+          <section className="flex-1 md:ml-[115px]">
+            <div className="md:max-w-[1024px] bg-white px-4 py-2 text-[16px] md:px-6">
+              <h1 className="text-[22px] font-bold text-[#1f1f1f] md:text-[24px]">Basic Information</h1>
+              <div className="color-[#000000] mb-6 md:mb-10" style={{height: "3px", width:"100%"}}></div>
+              <div className="flex flex-col items-start justify-start gap-10 md:flex-row md:gap-[150px]">
+                <div className="w-full md:max-w-[433px] flex-1">
                   <div className="grid grid-cols-[170px_1fr] items-center gap-x-8 gap-y-5 text-[16px]">
                     <span className="font-semibold">Full Name</span>
-                    <span>EPHREM MAMO TORA</span>
+                    <span>{profile?.full_name ?? "—"}</span>
 
                     <span className="font-semibold">ID No.</span>
-                    <span>UGR/1504/14</span>
+                    <span>{profile?.student_id ?? "—"}</span>
                   </div>
 
                   <div className="mt-7 space-y-5">
@@ -81,7 +91,8 @@ export default function BasicInformationPage() {
                       </label>
                       <input
                         id="email"
-                        defaultValue="ephremmamo55@gmail.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         className="h-[34px] w-full rounded border border-[#d0d5d8] px-3 py-5 text-[16px] outline-none"
                       />
                     </div>
@@ -126,13 +137,13 @@ export default function BasicInformationPage() {
                   </div>
                 </div>
 
-                <div className="w-[300px] text-[16px] flex-1">
-                  <div className="grid grid-cols-[110px_1fr] items-start gap-x-4 gap-y-4 pl-10">
+                <div className="w-full text-[16px] flex-1 md:w-[300px]">
+                  <div className="grid grid-cols-[110px_1fr] items-start gap-x-4 gap-y-4 md:pl-10">
                     <span className="font-semibold">Department</span>
-                    <span>School of information technology and Engineering 2024</span>
+                    <span>{profile?.department ?? "—"}</span>
 
                     <span className="font-semibold">Year</span>
-                    <span>Year V</span>
+                    <span>{yearLabel ? `Year ${yearLabel}` : "—"}</span>
                   </div>
 
                   <p className="mb-2 mt-6 text-[16px] font-semibold">Photo Preview</p>

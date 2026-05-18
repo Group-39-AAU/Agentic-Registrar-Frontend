@@ -1,26 +1,7 @@
-"use client";
-
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
-import { useEffect } from "react";
-
-function TopStrip() {
-  return (
-    <div className="border-b border-[#b8c7d5] bg-[linear-gradient(90deg,#eef4f8_0%,#d8e8f5_100%)] py-1">
-      <div className="mx-[70px] flex h-[96px] max-w-[1200px] items-center px-6">
-        <a href="http://localhost:3000/portal/home">
-          <img src="/assets/logo.png" alt="AAU" className="h-[100px] w-[100px]" />
-        </a>
-        <div className="ml-4">
-          <p className="text-[25px] leading-none text-[#cf2e2e]">ADDIS ABABA UNIVERSITY</p>
-          <p className="mt-1 ml-12 text-[20px] font-bold leading-none text-[#cf2e2e]">አዲስ አበባ ዩኒቨርሲቲ</p>
-          <p className="mt-1 ml-32 text-[16px] text-[#4a5a6a]">Seek wisdom, Elevate Your Intellect and Serve Humanity</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+import PortalTopStrip from "@/components/PortalTopStrip";
 
 type CourseRow = {
   no: number;
@@ -72,29 +53,25 @@ const semesters: SemesterBlock[] = [
 ];
 
 export default function GradeReportPage() {
-  useEffect(() => {
-    document.title = "Grade Report | Addis Ababa University";
-  }, []);
-
   return (
     <div className="flex min-h-screen flex-col bg-[#ffffff] font-[Arial,Helvetica,sans-serif] text-[16px] text-[#1a1a1a]">
-      <TopStrip />
+      <PortalTopStrip />
       <PortalMainNav />
 
       <main className="flex-1 py-[8px]">
-        <div className="flex gap-5">
+        <div className="flex flex-col gap-5 md:flex-row">
           <PortalSideMenu />
 
-          <section className="mx-[150px] flex-1">
+          <section className="flex-1 px-3 md:mx-[150px] md:px-0">
             <div className="bg-white">
               <div className="border-b border-[#e4e4e4] pb-1">
                 <h1 className="text-[24px] font-semibold">My Grade Report</h1>
               </div>
 
-              <div className="py-4">
-                <table className="w-full border-collapse text-[16px]">
+              <div className="py-4 overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0">
+                <table className="w-full min-w-[720px] border-collapse text-[16px]">
                   <thead>
-                    <tr className="bg-[#d8ead5] text-[#1f1f1f]">
+                    <tr className="bg-[linear-gradient(180deg,#dff0db_0%,#cee2c5_100%)] text-[#1f1f1f] shadow-[inset_0_-1px_0_rgba(15,23,42,0.06)]">
                       <th className="border border-[#d9d9d9] p-[12px] text-left font-semibold">No.</th>
                       <th className="border border-[#d9d9d9] p-[12px] text-left font-semibold">Course Title</th>
                       <th className="border border-[#d9d9d9] p-[12px] text-left font-semibold">Code</th>
@@ -106,10 +83,10 @@ export default function GradeReportPage() {
                   </thead>
                 </table>
 
-                <div className="overflow-hidden rounded-b-[4px] border border-t-0 border-[#d9d9d9]">
+                <div className="min-w-[720px] overflow-hidden rounded-b-[4px] border border-t-0 border-[#d9d9d9]">
                   {semesters.map((semester) => (
                     <div key={semester.label} className="border-b border-[#e4e4e4] last:border-b-0">
-                      <div className="px-[30px] pt-[40px] pb-[50px] text-[16px] font-semibold text-[#3d77a8]">{semester.label}</div>
+                      <div className="px-4 pt-6 pb-6 text-[15px] font-semibold text-[#3d77a8] md:px-[30px] md:pt-[40px] md:pb-[50px] md:text-[16px]">{semester.label}</div>
 
                       <table className="w-full border-collapse text-[16px]">
                         <tbody>
@@ -127,8 +104,8 @@ export default function GradeReportPage() {
                         </tbody>
                       </table>
 
-                      <div className="m-4 rounded-[8px] border border-[#dedede] bg-[#ffffff] px-[80px] py-2 my-[50px]">
-                        <div className="inline-grid grid-cols-2 gap-x-[100px]">
+                      <div className="m-4 rounded-[8px] border border-[#dedede] bg-[#ffffff] px-4 py-2 md:my-[50px] md:px-[80px]">
+                        <div className="inline-grid grid-cols-1 gap-x-8 gap-y-1 md:grid-cols-2 md:gap-x-[100px]">
                           <p className="font-semibold">SGP : {semester.stats.sgp}</p>
                           <p className="font-semibold">SGPA : {semester.stats.cgpaSemester}</p>
                           <p className="font-semibold">CGP : {semester.stats.cgp}</p>

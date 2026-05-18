@@ -19,7 +19,7 @@ export const IMPLEMENTED_LINKS = new Set([
 export function getFeatureHref(name: string) {
   if (name === "Home") return "/portal/home";
   if (name === "Basic Information") return "/portal/basic-information";
-  if (name === "Course Registration") return "/portal/course-registration";
+  if (name === "Registration" || name === "Course Registration") return "/portal/course-registration";
   if (name === "Cost Sharing Form") return "/portal/course-registration/cost-sharing";
   if (name === "Grade Report" || name === "Grade & Results" || name === "Grade and Results") return "/portal/grade-report";
   if (IMPLEMENTED_LINKS.has(name)) return "#";
@@ -28,6 +28,8 @@ export function getFeatureHref(name: string) {
 
 export default function PortalMainNav() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const defaultMenu = (
@@ -151,8 +153,120 @@ export default function PortalMainNav() {
   ];
 
   return (
-    <div className="bg-[#2f78b7] text-white">
-      <div className="flex h-[40px] max-w-[1200px] items-center px-[32px] py-[28px] text-[14px]">
+    <div className="bg-[linear-gradient(180deg,#327fc1_0%,#2f78b7_45%,#2c70ab_100%)] text-white shadow-[0_2px_8px_-4px_rgba(15,23,42,0.35),inset_0_1px_0_rgba(255,255,255,0.18)]">
+      <div className="flex h-[44px] items-center justify-between px-3 md:hidden">
+        <span className="text-[15px] font-semibold">Menu</span>
+        <button
+          type="button"
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen((open) => !open)}
+          className="grid h-9 w-9 place-items-center rounded hover:bg-[#275fa0]"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            {mobileOpen ? (
+              <path d="M6 6l12 12M6 18L18 6" />
+            ) : (
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      <div
+        className={`md:hidden overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${
+          mobileOpen ? "max-h-[80vh] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="max-h-[80vh] overflow-y-auto border-t border-white/15">
+          <ul>
+            {items.map((item) => {
+              const expanded = mobileExpanded === item.name;
+              const href = getFeatureHref(item.name);
+              return (
+                <li key={item.name} className="border-b border-white/10">
+                  <div className="flex">
+                    <a
+                      href={href}
+                      onClick={(event) => {
+                        if (href === "#") event.preventDefault();
+                        else setMobileOpen(false);
+                      }}
+                      className="flex flex-1 items-center gap-2 px-4 py-3 text-[15px] font-semibold no-underline hover:bg-[#275fa0] hover:no-underline"
+                    >
+                      {item.image}
+                      <span>{item.name}</span>
+                    </a>
+                    {item.dropdown ? (
+                      <button
+                        type="button"
+                        aria-label={expanded ? `Collapse ${item.name}` : `Expand ${item.name}`}
+                        onClick={() =>
+                          setMobileExpanded(expanded ? null : item.name)
+                        }
+                        className="grid w-12 place-items-center border-l border-white/10 hover:bg-[#275fa0]"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          className={`h-4 w-4 transition-transform duration-200 ${
+                            expanded ? "rotate-180" : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </div>
+                  {item.dropdown ? (
+                    <div
+                      className={`overflow-hidden bg-[#26619f] transition-[max-height,opacity] duration-300 ease-out ${
+                        expanded ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+                      }`}
+                    >
+                      <ul className="py-1">
+                        {item.dropdown.map((option) => {
+                          const optionHref = getFeatureHref(option.name);
+                          return (
+                            <li key={option.name}>
+                              <a
+                                href={optionHref}
+                                onClick={(event) => {
+                                  if (optionHref === "#") event.preventDefault();
+                                  else setMobileOpen(false);
+                                }}
+                                className="flex items-center gap-2 px-8 py-2 text-[14px] text-white no-underline hover:bg-[#1f5388] hover:no-underline"
+                              >
+                                {option.image}
+                                <span>{option.name}</span>
+                              </a>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+
+      <div className="hidden h-[40px] max-w-[1200px] items-center px-[32px] py-[28px] text-[14px] md:flex">
         {items.map((item) => (
           <div
             key={item.name}
@@ -176,8 +290,8 @@ export default function PortalMainNav() {
             }}
           >
             <div
-              className={`flex cursor-pointer items-center gap-1 whitespace-nowrap p-[8px] font-semibold font-size-[15px] transition-colors duration-200 ${
-                openMenu === item.name ? "rounded-t-sm bg-[#275fa0]" : ""
+              className={`flex cursor-pointer items-center gap-1 whitespace-nowrap p-[8px] font-semibold font-size-[15px] transition-colors duration-200 hover:bg-white/10 ${
+                openMenu === item.name ? "rounded-t-sm bg-[#275fa0] shadow-[inset_0_-1px_0_rgba(255,255,255,0.18)]" : ""
               }`}
             >
               <a
@@ -194,13 +308,13 @@ export default function PortalMainNav() {
             </div>
             {item.dropdown && (
               <div
-                className={`absolute left-0 top-full z-50 w-max max-w-none origin-top overflow-hidden rounded-[8px] border border-[#c5c5c5] bg-[#f7f7f7] p-4 shadow-[0_4px_14px_rgba(0,0,0,0.22)] transition-[max-height,opacity] duration-[3000ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                className={`absolute left-0 top-full z-50 w-max max-w-none origin-top rounded-[10px] border border-[#d4dbe2] bg-[linear-gradient(180deg,#ffffff_0%,#f5f7fa_100%)] p-4 shadow-[0_18px_40px_-18px_rgba(15,23,42,0.35),0_2px_8px_-4px_rgba(15,23,42,0.18)] backdrop-blur-[6px] transition-[opacity,clip-path,transform] duration-300 ease-out ${
                   openMenu === item.name
-                    ? "pointer-events-auto max-h-[700px] opacity-100"
-                    : "pointer-events-none max-h-0 opacity-0"
+                    ? "pointer-events-auto translate-y-0 opacity-100 [clip-path:inset(0_0_0_0)]"
+                    : "pointer-events-none -translate-y-1 opacity-0 [clip-path:inset(0_0_100%_0)]"
                 }`}
               >
-                <ul className="space-y-2">
+                <ul className="space-y-1">
                   {item.dropdown.map((option) => (
                     <li key={option.name}>
                       <a
@@ -208,10 +322,10 @@ export default function PortalMainNav() {
                         onClick={(event) => {
                           if (getFeatureHref(option.name) === "#") event.preventDefault();
                         }}
-                        className="flex cursor-pointer items-center gap-2 px-[8px] leading-[1.2] text-[#141414] no-underline hover:no-underline"
+                        className="group flex cursor-pointer items-center gap-2 rounded-md px-[8px] py-[6px] leading-[1.2] text-[#141414] no-underline transition-colors duration-150 hover:bg-[rgba(47,120,183,0.08)] hover:text-[#1f5b94] hover:no-underline"
                       >
                         {option.image}
-                        <span className="text-[13px] text-[#1a1a1a]">{option.name}</span>
+                        <span className="text-[13px] text-[#1a1a1a] transition-colors duration-150 group-hover:text-[#1f5b94]">{option.name}</span>
                       </a>
                     </li>
                   ))}

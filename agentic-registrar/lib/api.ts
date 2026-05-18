@@ -6,6 +6,7 @@ const API_BASE =
     : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
 
 export const AUTH_TOKEN_KEY = "aau_registrar_access_token";
+export const STUDENT_AUTH_TOKEN_KEY = "aau_registrar_student_access_token";
 
 export function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -32,6 +33,21 @@ export function storeAuthFromResponse(data: unknown): void {
 export function clearStoredAccessToken(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function getStoredStudentAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(STUDENT_AUTH_TOKEN_KEY);
+}
+
+export function setStudentAccessToken(token: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STUDENT_AUTH_TOKEN_KEY, token);
+}
+
+export function clearStoredStudentAccessToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STUDENT_AUTH_TOKEN_KEY);
 }
 
 export class ApiError extends Error {
@@ -121,6 +137,219 @@ export async function loginUser(body: LoginRequest): Promise<LoginResponse> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data);
   return data as LoginResponse;
+}
+
+export type StudentMeResponse = {
+  student_id: string;
+  full_name: string;
+  email: string;
+  department: string;
+  current_semester: number;
+  sponsorship_type: string;
+  enrollment_status: string;
+  current_term?: {
+    term_id: string;
+    term_name: string;
+    start_date: string;
+    end_date: string;
+    registration_status: string;
+    section?: {
+      section_id: string;
+      section_code: string;
+      capacity: number;
+      enrolled_count: number;
+    };
+  };
+};
+
+export type CourseTerm = {
+  id: string;
+  term_name: string;
+  phase: string;
+  start_date: string;
+  end_date: string;
+  is_open: boolean;
+  description?: string;
+};
+
+export type AvailableCourseItem = {
+  id: string;
+  code: string;
+  title: string;
+  credit_hours: number;
+  semester: number;
+  department: string;
+};
+
+export type AvailableCoursesResponse = {
+  term: CourseTerm;
+  is_registered: boolean;
+  registration_id?: string | null;
+  registration_status?: string;
+  courses: AvailableCourseItem[];
+};
+
+/** GET /api/v1/courses/terms — requires student Bearer token. */
+export async function fetchCourseTerms(): Promise<CourseTerm[]> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/terms`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return Array.isArray(data) ? (data as CourseTerm[]) : [];
+}
+
+/** POST /api/v1/courses/me/available-courses — requires student Bearer token. */
+export async function fetchAvailableCourses(
+  termId: string
+): Promise<AvailableCoursesResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me/available-courses`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ term_id: termId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  console.log(data)
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as AvailableCoursesResponse;
+}
+
+export type RegistrationInvoiceLine = {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+  line_total: number;
+};
+
+export type RegistrationInvoice = {
+  registration_id: string;
+  sponsorship_type: string;
+  currency: string;
+  fee_per_credit_hour: number;
+  lines: RegistrationInvoiceLine[];
+  total_credit_hours: number;
+  gross_total: number;
+  amount_due: number;
+  is_government_sponsored: boolean;
+  payment_required: boolean;
+  note?: string;
+};
+
+export type RegistrationPaymentInitiateResponse = {
+  registration_id: string;
+  payment_reference: string;
+  payment_url: string;
+};
+
+/** GET /api/v1/courses/registrations/{registration_id}/invoice */
+export async function fetchRegistrationInvoice(
+  registrationId: string
+): Promise<RegistrationInvoice> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/registrations/${encodeURIComponent(registrationId)}/invoice`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as RegistrationInvoice;
+}
+
+/** POST /api/v1/courses/registrations/{registration_id}/payment/initiate */
+export async function initiateRegistrationPayment(
+  registrationId: string
+): Promise<RegistrationPaymentInitiateResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/registrations/${encodeURIComponent(registrationId)}/payment/initiate`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as RegistrationPaymentInitiateResponse;
+}
+
+/** POST /api/v1/courses/registrations/{registration_id}/payment/callback */
+export async function callbackRegistrationPayment(
+  registrationId: string,
+  body: { payment_reference: string }
+): Promise<unknown> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/registrations/${encodeURIComponent(registrationId)}/payment/callback`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+/** POST /api/v1/courses/me/register — submit selected courses for a term. */
+export async function registerForCourses(
+  termId: string,
+  courseIds: string[]
+): Promise<unknown> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me/register`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ term_id: termId, course_ids: courseIds }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+/** GET /api/v1/courses/me — requires student Bearer token. */
+export async function fetchStudentMe(): Promise<StudentMeResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  console.log(data)
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as StudentMeResponse;
 }
 
 export type UndergraduateApplicationRecord = {
