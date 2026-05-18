@@ -1,6 +1,5 @@
 "use client";
 
-import AdvisoryConsultPanel from "@/components/AdvisoryConsultPanel";
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
@@ -51,6 +50,7 @@ export default function RegisteredCoursesPage() {
   const [paymentRefInput, setPaymentRefInput] = useState("");
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [lastSubmittedCourseIds, setLastSubmittedCourseIds] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,8 +150,10 @@ export default function RegisteredCoursesPage() {
     if (!termId || selectedCourseIds.length === 0 || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
+    const submittedIds = [...selectedCourseIds];
     try {
-      await registerForCourses(termId, selectedCourseIds);
+      await registerForCourses(termId, submittedIds);
+      setLastSubmittedCourseIds(submittedIds);
       const refreshed = await fetchAvailableCourses(termId);
       setAvailable(refreshed);
       setSelectedCourseIds([]);
@@ -195,6 +197,17 @@ export default function RegisteredCoursesPage() {
       await callbackRegistrationPayment(registrationId, {
         payment_reference: ref,
       });
+
+      // After payment confirmation, replay the original registration call
+      // with the same { term_id, course_ids } body to finalize.
+      const replayIds =
+        lastSubmittedCourseIds.length > 0
+          ? lastSubmittedCourseIds
+          : courses.map((c) => c.id);
+      if (termId && replayIds.length > 0) {
+        await registerForCourses(termId, replayIds);
+      }
+
       closePaymentModal();
       router.push("/portal/course-registration?registered=1");
     } catch (err: unknown) {
@@ -596,10 +609,6 @@ export default function RegisteredCoursesPage() {
             </div>
           </div>
         </div>
-      ) : null}
-
-      {showRegisterTable && termId ? (
-        <AdvisoryConsultPanel termId={termId} />
       ) : null}
 
       <PortalFooter />
