@@ -1,4 +1,4 @@
-
+  
 
 export default function PortalTopStrip() {
   return (

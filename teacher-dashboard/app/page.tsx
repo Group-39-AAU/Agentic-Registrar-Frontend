@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import TeacherFooter from "@/components/TeacherFooter";
+import { ApiError, loginTeacher, setTeacherToken } from "@/lib/gradingApi";
 
 function LoginTopBrand() {
   return (
@@ -22,7 +23,7 @@ function LoginTopBrand() {
 
 export default function TeacherLoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +37,7 @@ export default function TeacherLoginPage() {
             <Image src="/assets/logo.png" alt="AAU" width={52} height={52} className="mx-auto h-13 w-13" />
             <h1 className="mt-3 text-[24px] font-bold text-[#2a66a7]">Teacher login</h1>
             <p className="text-[13px] text-[#5a5a5a]">
-              UI preview with static data only — use any username and password to continue.
+              Sign in with your staff email and password.
             </p>
           </div>
 
@@ -50,22 +51,28 @@ export default function TeacherLoginPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               setError(null);
-              if (!username.trim() || !password.trim()) {
-                setError("Username and password are required.");
+              if (!identifier.trim() || !password.trim()) {
+                setError("Email and password are required.");
                 return;
               }
-
               setLoading(true);
               try {
-                await new Promise((r) => setTimeout(r, 280));
+                const res = await loginTeacher(identifier.trim(), password);
+                setTeacherToken(res.access_token);
                 localStorage.setItem("teacher_dashboard_logged_in", "true");
-                localStorage.setItem(
-                  "teacher_dashboard_token",
-                  "static-demo-token"
-                );
                 router.push("/home");
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Something went wrong.");
+                if (err instanceof ApiError) {
+                  setError(
+                    err.status === 401
+                      ? "Invalid email or password."
+                      : err.message ?? "Login failed.",
+                  );
+                } else if (err instanceof Error) {
+                  setError(err.message);
+                } else {
+                  setError("Something went wrong.");
+                }
               } finally {
                 setLoading(false);
               }
@@ -73,9 +80,9 @@ export default function TeacherLoginPage() {
             className="space-y-3"
           >
             <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="Email (e.g. staff-9991-15@aau.edu.et)"
               className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7]"
             />
             <input

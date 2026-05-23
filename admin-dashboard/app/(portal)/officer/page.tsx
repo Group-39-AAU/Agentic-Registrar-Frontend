@@ -147,10 +147,12 @@ function SectionGrid({
   sections,
   contextQuery,
   emptyLabel,
+  target,
 }: {
   sections: unknown[];
   contextQuery: string;
   emptyLabel: string;
+  target: "students" | "schedule";
 }) {
   if (sections.length === 0) {
     return (
@@ -172,7 +174,7 @@ function SectionGrid({
           const semester = getSectionSemester(s);
           const isLinkable = !!getSectionId(s);
           const href = isLinkable
-            ? `/officer/sections/${encodeURIComponent(id)}${contextQuery}`
+            ? `/officer/sections/${encodeURIComponent(id)}/${target}${contextQuery}`
             : null;
 
           const card = (
@@ -637,6 +639,7 @@ export default function OfficerPage() {
                 sections={allocationData.sections_created ?? []}
                 contextQuery={contextQuery}
                 emptyLabel="No sections were created in this run."
+                target="students"
               />
             </div>
           ) : null}
@@ -741,6 +744,7 @@ export default function OfficerPage() {
                 sections={scheduleData.sections ?? []}
                 contextQuery={contextQuery}
                 emptyLabel="No sections were returned in this run."
+                target="schedule"
               />
             </div>
           ) : null}

@@ -7,6 +7,7 @@ const navItems = [
   { id: "home", href: "/home", label: "Home" },
   { id: "courses", href: "/courses", label: "My courses" },
   { id: "grades", href: "/courses", label: "Enter grades" },
+  { id: "schedule", href: "/schedule", label: "My schedule" },
   { id: "submissions", href: "/submissions", label: "Submissions" },
 ] as const;
 
@@ -14,6 +15,7 @@ function isNavActive(id: string, pathname: string): boolean {
   if (id === "home") return pathname === "/home";
   if (id === "courses") return pathname === "/courses";
   if (id === "grades") return pathname.startsWith("/grades");
+  if (id === "schedule") return pathname.startsWith("/schedule");
   if (id === "submissions") return pathname.startsWith("/submissions");
   return false;
 }

@@ -37,7 +37,7 @@ export default function PortalLoginForm() {
       if (err instanceof ApiError) {
         setError(err.message || "Invalid username or password.");
       } else if (err instanceof TypeError) {
-        setError("Cannot reach the server. Check your connection or try again later.");
+        setError("Cannot reach the server. Check your c onnection or try again later.");
       } else {
         setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }

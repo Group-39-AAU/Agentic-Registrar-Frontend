@@ -2,679 +2,909 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ASSESSMENT_OPTIONS, labelForComponentId } from "@/lib/assessmentOptions";
-import type { ExcelImportResult } from "@/lib/excelGradeImport";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  excelImportHasAnyIssue,
-  expectedExcelHeaders,
-  parseGradeExcelWorkbook,
-  readExcelWorkbookFromArrayBuffer,
-} from "@/lib/excelGradeImport";
-import type { CourseStudent, TeacherCourse } from "@/lib/mockCourses";
-import { calendarSemesterLabel, getStaticCourseById, parseCalendarSemesterId } from "@/lib/mockCourses";
-import { getSubmission, newSubmissionId, upsertSubmission } from "@/lib/submissionsStorage";
-import { fetchStudentsForCourse, fetchTeacherCourses, submitGradeMatrix } from "@/lib/teacherApi";
+  ApiError,
+  describeIncomplete,
+  fetchBreakdown,
+  formatLetter,
+  getOrCreateBatch,
+  justifyBatch,
+  listAgentReviews,
+  reopenBatch,
+  submitBatch,
+  upsertBreakdown,
+  upsertScores,
+  type AgentReview,
+  type AgentVerdict,
+  type ComponentInput,
+  type GradeBatch,
+  type GradeBatchSubmitResponse,
+} from "@/lib/gradingApi";
 
-type Step = 1 | 2;
+type ScoresMap = Record<string, Record<string, string>>; // student_id -> component_id -> string
 
-function sortComponentIds(ids: string[]) {
-  const order = new Map(ASSESSMENT_OPTIONS.map((o, i) => [o.id, i]));
-  return [...ids].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+function totalWeight(rows: { weight: string }[]): number {
+  return rows.reduce((s, r) => s + (Number(r.weight) || 0), 0);
+}
+
+function StatusPill({ status }: { status: GradeBatch["status"] }) {
+  const map: Record<GradeBatch["status"], string> = {
+    DRAFT: "border-gray-300 bg-gray-50 text-gray-600",
+    SUBMITTED: "border-[#cfddec] bg-[#eef4fa] text-[#1f5b94]",
+    FLAGGED: "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]",
+    REJECTED: "border-[#f0bcbc] bg-[#fdebeb] text-[#a31a1a]",
+    AUTHORISED: "border-[#cae6cf] bg-[#ecf8ef] text-[#1f7a3a]",
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ${map[status]}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function VerdictPill({ verdict }: { verdict: AgentVerdict }) {
+  const map: Record<AgentVerdict, string> = {
+    APPROVE: "border-[#cae6cf] bg-[#ecf8ef] text-[#1f7a3a]",
+    FLAG: "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]",
+    PENDING: "border-gray-300 bg-gray-50 text-gray-600",
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide ${map[verdict]}`}
+    >
+      {verdict}
+    </span>
+  );
 }
 
 export default function GradeEnterClient() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const courseParam = searchParams.get("course");
-  const submissionParam = searchParams.get("submission");
-  const yearParam = searchParams.get("year");
-  const legacyTerm = searchParams.get("term");
-  const semesterParam =
-    parseCalendarSemesterId(searchParams.get("semester")) ??
-    (legacyTerm === "I" || legacyTerm === "i" ? ("1" as const) : legacyTerm === "II" || legacyTerm === "ii" ? ("2" as const) : null);
+  const params = useSearchParams();
+  const sectionId = params.get("section_id") ?? "";
+  const courseId = params.get("course_id") ?? "";
+  const termId = params.get("term_id") ?? "";
 
-  const [step, setStep] = useState<Step>(1);
-  const [courses, setCourses] = useState<TeacherCourse[]>([]);
-  const [courseId, setCourseId] = useState("");
-  const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
-  const [students, setStudents] = useState<CourseStudent[]>([]);
-  const [scores, setScores] = useState<Record<string, Record<string, string>>>({});
-  const [submissionId, setSubmissionId] = useState(newSubmissionId);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [loadMsg, setLoadMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
-  const [reasoning, setReasoning] = useState("");
-  const [banner, setBanner] = useState<string | null>(null);
-  const [excelImport, setExcelImport] = useState<ExcelImportResult | null>(null);
-  const [excelFileName, setExcelFileName] = useState<string | null>(null);
-  const excelInputRef = useRef<HTMLInputElement>(null);
+  const [breakdownExists, setBreakdownExists] = useState<boolean>(false);
+  const [batch, setBatch] = useState<GradeBatch | null>(null);
 
-  const selectedCourse = useMemo(() => courses.find((c) => c.id === courseId) ?? null, [courses, courseId]);
-  const editingSubmission = Boolean(submissionParam);
+  const [draftComponents, setDraftComponents] = useState<
+    { name: string; weight: string; max_score: string }[]
+  >([{ name: "", weight: "", max_score: "" }]);
+  const [breakdownBusy, setBreakdownBusy] = useState(false);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (submissionParam) {
-        const sub = getSubmission(submissionParam);
-        const c = sub ? getStaticCourseById(sub.courseId) : undefined;
-        if (!cancelled) setCourses(c ? [c] : []);
-        return;
+  const [scores, setScores] = useState<ScoresMap>({});
+  const [scoreSaveBusy, setScoreSaveBusy] = useState(false);
+  const [scoreSaveError, setScoreSaveError] = useState<string | null>(null);
+  const [scoreSaveMsg, setScoreSaveMsg] = useState<string | null>(null);
+
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitResult, setSubmitResult] =
+    useState<GradeBatchSubmitResponse | null>(null);
+
+  const [justifyText, setJustifyText] = useState("");
+  const [justifyBusy, setJustifyBusy] = useState(false);
+  const [reopenBusy, setReopenBusy] = useState(false);
+
+  const [reviews, setReviews] = useState<AgentReview[]>([]);
+
+  const seedScoresFromBatch = useCallback((b: GradeBatch) => {
+    const next: ScoresMap = {};
+    for (const row of b.rows) {
+      const cellMap: Record<string, string> = {};
+      for (const cell of row.scores) {
+        cellMap[cell.component_id] =
+          cell.score == null ? "" : String(cell.score);
       }
-      if (!yearParam || !semesterParam) {
-        if (!cancelled) setCourses([]);
-        return;
-      }
-      const list = await fetchTeacherCourses(yearParam, semesterParam);
-      if (!cancelled) setCourses(list);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [submissionParam, yearParam, semesterParam]);
-
-  useEffect(() => {
-    if (!courseParam) return;
-    if (courses.some((c) => c.id === courseParam)) {
-      setCourseId(courseParam);
+      next[row.student_id] = cellMap;
     }
-  }, [courseParam, courses]);
+    setScores(next);
+  }, []);
 
-  useEffect(() => {
-    if (!submissionParam) {
-      setLoadMsg(null);
+  const refreshBatchAndReviews = useCallback(
+    async (sid: string, cid: string) => {
+      const b = await getOrCreateBatch(sid, cid);
+      setBatch(b);
+      seedScoresFromBatch(b);
+      try {
+        const r = await listAgentReviews(b.id);
+        setReviews(r);
+      } catch {
+        // Agent review history is best-effort.
+      }
+    },
+    [seedScoresFromBatch],
+  );
+
+  const loadInitial = useCallback(async () => {
+    if (!sectionId || !courseId) {
+      setError("Missing section_id or course_id in the URL.");
+      setLoading(false);
       return;
     }
-    const sub = getSubmission(submissionParam);
-    if (!sub) {
-      setLoadMsg("That submission could not be found on this device.");
-      return;
-    }
-    setLoadMsg(null);
-    setSubmissionId(sub.id);
-    setCourseId(sub.courseId);
-    setSelectedComponents(sub.components);
-    setStep(2);
-    const sc: Record<string, Record<string, string>> = {};
-    for (const row of sub.rows) {
-      sc[row.studentId] = { ...row.scores };
-    }
-    setScores(sc);
-    setAiFeedback(sub.status === "REJECTED" ? sub.aiFeedback ?? null : null);
-    setReasoning("");
-    setBanner(null);
-    setExcelImport(null);
-    setExcelFileName(null);
-  }, [submissionParam]);
-
-  useEffect(() => {
-    if (step !== 2 || !courseId) return;
-    let cancelled = false;
-    (async () => {
-      const roster = await fetchStudentsForCourse(courseId);
-      if (cancelled) return;
-      setStudents(roster);
-      setExcelImport(null);
-      setExcelFileName(null);
-      setScores((prev) => {
-        const next: Record<string, Record<string, string>> = {};
-        for (const s of roster) {
-          next[s.id] = {};
-          for (const comp of selectedComponents) {
-            next[s.id][comp] = prev[s.id]?.[comp] ?? "";
-          }
-        }
-        return next;
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [step, courseId, selectedComponents]);
-
-  function toggleComponent(id: string) {
-    setSelectedComponents((prev) => {
-      const has = prev.includes(id);
-      const merged = has ? prev.filter((x) => x !== id) : [...prev, id];
-      return sortComponentIds(merged);
-    });
-  }
-
-  function goNext() {
-    if (!courseId || selectedComponents.length === 0) return;
-    setStep(2);
-    setBanner(null);
-    setExcelImport(null);
-    setExcelFileName(null);
-    if (!editingSubmission) {
-      setAiFeedback(null);
-      setReasoning("");
-    }
-  }
-
-  async function handleExcelFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || students.length === 0 || selectedComponents.length === 0) return;
+    setLoading(true);
+    setError(null);
     try {
-      const buf = await file.arrayBuffer();
-      const wb = readExcelWorkbookFromArrayBuffer(buf);
-      const result = parseGradeExcelWorkbook(wb, students, selectedComponents);
-      setExcelFileName(file.name);
-      setExcelImport(result);
-    } catch (err) {
-      setExcelFileName(file.name);
-      setExcelImport({
-        rows: [],
-        summary: { dataRows: 0, matchedRows: 0, unmatchedRows: 0, rowsWithCellIssues: 0 },
-        errors: [err instanceof Error ? err.message : "Could not read that Excel file."],
-      });
-    }
-  }
-
-  function discardExcelImport() {
-    setExcelImport(null);
-    setExcelFileName(null);
-  }
-
-  function applyExcelImport() {
-    if (!excelImport || excelImportHasAnyIssue(excelImport)) return;
-    setScores((prev) => {
-      const next = { ...prev };
-      for (const row of excelImport.rows) {
-        if (!row.rosterStudentId) continue;
-        const sid = row.rosterStudentId;
-        if (!next[sid]) next[sid] = {};
-        for (const cid of selectedComponents) {
-          const raw = (row.scores[cid] ?? "").trim();
-          if (row.cellIssues[cid]) continue;
-          if (raw === "") continue;
-          next[sid] = { ...next[sid], [cid]: raw };
+      const bd = await fetchBreakdown(sectionId, courseId);
+      if (bd == null) {
+        setBreakdownExists(false);
+        setBatch(null);
+        setLoading(false);
+        return;
+      }
+      setBreakdownExists(true);
+      await refreshBatchAndReviews(sectionId, courseId);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        if (e.status === 403) {
+          setError("You aren't assigned to teach this (section, course) pair.");
+        } else if (e.status === 401) {
+          setError("Your session has expired — please log in again.");
+        } else {
+          setError(e.message ?? "Could not load the grading workspace.");
         }
-      }
-      return next;
-    });
-    setExcelImport(null);
-    setExcelFileName(null);
-    setBanner("Excel marks merged into the grid below. Review cells, then submit.");
-  }
-
-  function goBack() {
-    if (editingSubmission) return;
-    setExcelImport(null);
-    setExcelFileName(null);
-    setStep(1);
-  }
-
-  async function handleSubmit() {
-    if (!selectedCourse) return;
-    setBusy(true);
-    setBanner(null);
-    try {
-      const rows = students.map((s) => ({
-        studentId: s.id,
-        admissionNumber: s.admissionNumber,
-        fullName: s.fullName,
-        scores: selectedComponents.reduce<Record<string, string>>((acc, comp) => {
-          acc[comp] = scores[s.id]?.[comp] ?? "";
-          return acc;
-        }, {}),
-      }));
-
-      const result = await submitGradeMatrix({
-        submissionId,
-        courseId,
-        components: selectedComponents,
-        rows,
-        reasoning: reasoning.trim() || undefined,
-      });
-
-      const now = new Date().toISOString();
-      const existing = getSubmission(submissionId);
-      const reasoningHistory = [...(existing?.reasoningHistory ?? [])];
-      if (reasoning.trim()) {
-        reasoningHistory.push({ at: now, text: reasoning.trim() });
-      }
-
-      const baseRecord = {
-        id: submissionId,
-        courseId,
-        courseCode: selectedCourse.code,
-        courseTitle: selectedCourse.title,
-        academicYear: selectedCourse.academicYear,
-        calendarSemester: selectedCourse.calendarSemester,
-        components: selectedComponents,
-        rows: rows.map((r) => ({
-          studentId: r.studentId,
-          admissionNumber: r.admissionNumber,
-          fullName: r.fullName,
-          scores: r.scores,
-        })),
-        reasoningHistory,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-
-      if (result.outcome === "REJECTED") {
-        setAiFeedback(result.feedback);
-        upsertSubmission({
-          ...baseRecord,
-          status: "REJECTED",
-          aiFeedback: result.feedback,
-        });
-        setReasoning("");
       } else {
-        setAiFeedback(null);
-        upsertSubmission({
-          ...baseRecord,
-          status: "ACCEPTED",
-          aiFeedback: undefined,
-        });
-        setReasoning("");
-        setBanner(result.message ?? "Submission accepted. You can review it under Submissions.");
+        setError("Could not load the grading workspace.");
       }
     } finally {
-      setBusy(false);
+      setLoading(false);
+    }
+  }, [sectionId, courseId, refreshBatchAndReviews]);
+
+  useEffect(() => {
+    void loadInitial();
+  }, [loadInitial]);
+
+  function addComponentRow() {
+    setDraftComponents((rows) => [
+      ...rows,
+      { name: "", weight: "", max_score: "" },
+    ]);
+  }
+  function removeComponentRow(idx: number) {
+    setDraftComponents((rows) =>
+      rows.length === 1 ? rows : rows.filter((_, i) => i !== idx),
+    );
+  }
+  function updateComponentRow(
+    idx: number,
+    key: "name" | "weight" | "max_score",
+    value: string,
+  ) {
+    setDraftComponents((rows) =>
+      rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)),
+    );
+  }
+
+  async function saveBreakdown() {
+    setBreakdownError(null);
+    const cleaned: ComponentInput[] = [];
+    for (const row of draftComponents) {
+      const name = row.name.trim();
+      const weight = Number(row.weight);
+      if (!name) {
+        setBreakdownError("Every component needs a name.");
+        return;
+      }
+      if (!Number.isFinite(weight) || weight <= 0 || weight > 100) {
+        setBreakdownError(
+          `Component "${name}" needs a positive weight up to 100.`,
+        );
+        return;
+      }
+      const maxRaw = row.max_score.trim();
+      const max = maxRaw === "" ? weight : Number(maxRaw);
+      if (!Number.isFinite(max) || max <= 0) {
+        setBreakdownError(
+          `Component "${name}" needs a positive max score (or leave blank to default to its weight).`,
+        );
+        return;
+      }
+      cleaned.push({ name, weight, max_score: max });
+    }
+    if (Math.abs(cleaned.reduce((s, c) => s + c.weight, 0) - 100) > 0.01) {
+      setBreakdownError("Weights must sum to exactly 100.");
+      return;
+    }
+    setBreakdownBusy(true);
+    try {
+      await upsertBreakdown(sectionId, courseId, cleaned);
+      setBreakdownExists(true);
+      await refreshBatchAndReviews(sectionId, courseId);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setBreakdownError(e.message ?? "Could not save the breakdown.");
+      } else {
+        setBreakdownError("Could not save the breakdown.");
+      }
+    } finally {
+      setBreakdownBusy(false);
     }
   }
 
-  function startFresh() {
-    const y = searchParams.get("year");
-    const sem =
-      parseCalendarSemesterId(searchParams.get("semester")) ??
-      (legacyTerm === "I" || legacyTerm === "i" ? "1" : legacyTerm === "II" || legacyTerm === "ii" ? "2" : null);
-    const qs = y && sem ? `?year=${encodeURIComponent(y)}&semester=${encodeURIComponent(sem)}` : "";
-    router.push(`/grades/enter${qs}`);
-    setStep(1);
-    setCourseId("");
-    setSelectedComponents([]);
-    setStudents([]);
-    setScores({});
-    setSubmissionId(newSubmissionId());
-    setAiFeedback(null);
-    setReasoning("");
-    setBanner(null);
-    setLoadMsg(null);
-    setExcelImport(null);
-    setExcelFileName(null);
+  function setCell(studentId: string, componentId: string, value: string) {
+    setScoreSaveMsg(null);
+    setScores((prev) => {
+      const row = { ...(prev[studentId] ?? {}) };
+      row[componentId] = value;
+      return { ...prev, [studentId]: row };
+    });
   }
 
+  async function saveAllScores() {
+    if (!batch) return;
+    setScoreSaveError(null);
+    setScoreSaveMsg(null);
+    const cells: { student_id: string; component_id: string; score: number | null }[] = [];
+    for (const row of batch.rows) {
+      const sm = scores[row.student_id] ?? {};
+      for (const comp of batch.breakdown.components) {
+        const raw = (sm[comp.id] ?? "").trim();
+        if (raw === "") {
+          cells.push({
+            student_id: row.student_id,
+            component_id: comp.id,
+            score: null,
+          });
+          continue;
+        }
+        const num = Number(raw);
+        if (!Number.isFinite(num) || num < 0) {
+          setScoreSaveError(
+            `"${row.full_name}" / "${comp.name}" — score must be a non-negative number (or blank).`,
+          );
+          return;
+        }
+        if (num > comp.max_score) {
+          setScoreSaveError(
+            `"${row.full_name}" / "${comp.name}" — score ${num} exceeds the max of ${comp.max_score}.`,
+          );
+          return;
+        }
+        cells.push({
+          student_id: row.student_id,
+          component_id: comp.id,
+          score: num,
+        });
+      }
+    }
+    if (cells.length === 0) {
+      setScoreSaveError("No cells to save.");
+      return;
+    }
+    setScoreSaveBusy(true);
+    try {
+      const next = await upsertScores(batch.id, cells);
+      setBatch(next);
+      seedScoresFromBatch(next);
+      setScoreSaveMsg("Scores saved.");
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setScoreSaveError(e.message ?? "Could not save scores.");
+      } else {
+        setScoreSaveError("Could not save scores.");
+      }
+    } finally {
+      setScoreSaveBusy(false);
+    }
+  }
+
+  async function doSubmit() {
+    if (!batch) return;
+    setSubmitError(null);
+    setSubmitResult(null);
+    setSubmitBusy(true);
+    try {
+      const res = await submitBatch(batch.id);
+      setSubmitResult(res);
+      await refreshBatchAndReviews(sectionId, courseId);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        if (e.status === 422) {
+          const lines = describeIncomplete(e.body);
+          setSubmitError(
+            lines.length > 0
+              ? `Cannot submit — missing scores:\n• ${lines.join("\n• ")}`
+              : e.message ?? "Submission failed.",
+          );
+        } else {
+          setSubmitError(e.message ?? "Submission failed.");
+        }
+      } else {
+        setSubmitError("Submission failed.");
+      }
+    } finally {
+      setSubmitBusy(false);
+    }
+  }
+
+  async function doJustify() {
+    if (!batch) return;
+    if (justifyText.trim().length < 10) {
+      setSubmitError(
+        "Justification must be at least 10 characters so the agent has context.",
+      );
+      return;
+    }
+    setSubmitError(null);
+    setJustifyBusy(true);
+    try {
+      const res = await justifyBatch(batch.id, justifyText.trim());
+      setSubmitResult(res);
+      setJustifyText("");
+      await refreshBatchAndReviews(sectionId, courseId);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setSubmitError(e.message ?? "Could not submit the justification.");
+      } else {
+        setSubmitError("Could not submit the justification.");
+      }
+    } finally {
+      setJustifyBusy(false);
+    }
+  }
+
+  async function doReopen() {
+    if (!batch) return;
+    setSubmitError(null);
+    setSubmitResult(null);
+    setReopenBusy(true);
+    try {
+      const next = await reopenBatch(batch.id);
+      setBatch(next);
+      seedScoresFromBatch(next);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setSubmitError(e.message ?? "Could not reopen the batch.");
+      } else {
+        setSubmitError("Could not reopen the batch.");
+      }
+    } finally {
+      setReopenBusy(false);
+    }
+  }
+
+  const isEditable = batch?.status === "DRAFT";
+  const latestReview = reviews.length > 0 ? reviews[0] : null;
+  const breakdownDraftSum = totalWeight(draftComponents);
+  const incompleteCount = useMemo(
+    () => (batch ? batch.rows.filter((r) => !r.is_complete).length : 0),
+    [batch],
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h1 className="text-[22px] font-bold text-[#2a66a7]">Enter grades</h1>
-          <p className="mt-2 max-w-[760px] text-[14px] leading-relaxed text-[#4a5568]">
-            Step {step} of 2 — courses and rosters are generated in the browser (large lists for UI testing). Pick
-            assessment columns, enter marks, then submit. A simulated policy assistant may reject the batch until you
-            add sufficient reasoning.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={startFresh}
-          className="h-[38px] rounded-md border border-[#9bb0cc] bg-white px-4 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#f8fafc]"
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/courses"
+          className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#2f76b7] hover:underline"
         >
-          New submission
-        </button>
+          ← Back to my courses
+        </Link>
+        {termId ? (
+          <p className="text-[11px] text-[#5a5a5a]">
+            Term <span className="font-mono">{termId.slice(0, 8)}…</span>
+          </p>
+        ) : null}
       </div>
 
-      {loadMsg ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-          {loadMsg}{" "}
-          <Link href="/submissions" className="font-semibold text-[#2f76b7] underline">
-            View submissions
-          </Link>
+      {error ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+          {error}
         </p>
-      ) : null}
+      ) : loading ? (
+        <p className="text-[13px] text-[#5a5a5a]">Loading the grading workspace…</p>
+      ) : !breakdownExists ? (
+        <BreakdownEditor
+          rows={draftComponents}
+          totalWeight={breakdownDraftSum}
+          busy={breakdownBusy}
+          error={breakdownError}
+          onAdd={addComponentRow}
+          onRemove={removeComponentRow}
+          onChange={updateComponentRow}
+          onSave={saveBreakdown}
+        />
+      ) : batch ? (
+        <>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-[20px] font-bold text-[#1f2f40]">
+                  <span className="font-mono text-[#1f5b94]">
+                    {batch.course_code}
+                  </span>{" "}
+                  · {batch.course_title}
+                </h1>
+                <p className="mt-1 text-[12.5px] text-[#5a5a5a]">
+                  Section <strong>{batch.section_code}</strong> ·{" "}
+                  {batch.rows.length} students · iteration{" "}
+                  {batch.iteration_count}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <StatusPill status={batch.status} />
+                {latestReview ? <VerdictPill verdict={latestReview.verdict} /> : null}
+              </div>
+            </div>
 
-      {banner ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
-          <span>{banner}</span>{" "}
-          <Link href="/submissions" className="font-semibold text-[#2f76b7] underline">
-            Open submissions
-          </Link>
-        </div>
-      ) : null}
-
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
-          <span
-            className={`rounded-full px-3 py-1 ${step === 1 ? "bg-[#2f76b7] text-white" : "bg-[#e8eef5] text-[#5a5a5a]"}`}
-          >
-            1 · Components
-          </span>
-          <span className="text-gray-300">→</span>
-          <span
-            className={`rounded-full px-3 py-1 ${step === 2 ? "bg-[#2f76b7] text-white" : "bg-[#e8eef5] text-[#5a5a5a]"}`}
-          >
-            2 · Roster grid
-          </span>
-        </div>
-
-        {step === 1 ? (
-          <div className="space-y-6">
-            {!submissionParam && (!yearParam || !semesterParam) ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
-                Select <strong>academic year</strong> and <strong>calendar semester</strong> on{" "}
-                <Link href="/courses" className="font-semibold text-[#2f76b7] underline">
-                  My courses
-                </Link>{" "}
-                before choosing a section here (or add{" "}
-                <span className="font-mono text-[12px]">?year=2025/26&amp;semester=1</span> to the URL).
+            {batch.instructor_justification ? (
+              <div className="mt-4 rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-[12.5px] text-[#1f2f40]">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#8a5a00]">
+                  Latest justification
+                </p>
+                <p className="whitespace-pre-wrap">{batch.instructor_justification}</p>
               </div>
             ) : null}
+          </div>
 
-            <div>
-              <label className="mb-2 block text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
-                Course
-              </label>
-              <select
-                value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
-                className="h-[42px] w-full max-w-[480px] rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7]"
-              >
-                <option value="">Select a course</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code} — {c.title} · {c.academicYear} · {calendarSemesterLabel(c.calendarSemester)}
-                    {c.section ? ` · Sec ${c.section}` : ""}
-                  </option>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[14px] font-bold text-[#1f2f40]">
+                Assessment breakdown
+              </h2>
+              <span className="text-[11px] text-[#5a5a5a]">
+                {batch.breakdown.locked_at
+                  ? "Locked — scores already entered"
+                  : "Unlocked"}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {batch.breakdown.components
+                .slice()
+                .sort((a, b) => a.order_index - b.order_index)
+                .map((c) => (
+                  <div
+                    key={c.id}
+                    className="rounded-md border border-gray-200 bg-[#fafbfc] px-3 py-2 text-[12.5px]"
+                  >
+                    <p className="font-semibold text-[#1f2f40]">{c.name}</p>
+                    <p className="mt-0.5 text-[11px] text-[#5a5a5a]">
+                      weight {c.weight} · out of {c.max_score}
+                    </p>
+                  </div>
                 ))}
-              </select>
-            </div>
-
-            <div>
-              <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-                <label className="text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
-                  Assessment components
-                </label>
-                <span className="text-[11px] text-[#6b7280]">Pick every column you need in the grade sheet.</span>
-              </div>
-              <div className="grid max-h-[420px] grid-cols-1 gap-2 overflow-y-auto rounded-lg border border-gray-100 bg-[#f8fafc] p-3 sm:grid-cols-2 lg:grid-cols-3">
-                {ASSESSMENT_OPTIONS.map((opt) => {
-                  const checked = selectedComponents.includes(opt.id);
-                  return (
-                    <label
-                      key={opt.id}
-                      className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-[13px] ${
-                        checked ? "border-[#2f76b7] bg-white shadow-sm" : "border-transparent bg-white/60 hover:bg-white"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleComponent(opt.id)}
-                        className="h-4 w-4 accent-[#2f76b7]"
-                      />
-                      <span className="font-medium text-[#1a1a1a]">{opt.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled={!courseId || selectedComponents.length === 0}
-                onClick={goNext}
-                className="h-[40px] rounded-md bg-[#3f79b5] px-6 text-[14px] font-semibold text-white hover:bg-[#356e9f] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next · Build roster table
-              </button>
             </div>
           </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
-              <div>
-                <div className="text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">Course</div>
-                <div className="text-[16px] font-bold text-[#1a1a1a]">
-                  {selectedCourse
-                    ? `${selectedCourse.code} · ${selectedCourse.title} · ${selectedCourse.academicYear} · ${calendarSemesterLabel(selectedCourse.calendarSemester)}`
-                    : "—"}
-                </div>
-                <div className="mt-1 text-[12px] text-[#6b7280]">
-                  {students.length > 0 ? (
-                    <span className="tabular-nums">{students.length} students · </span>
-                  ) : null}
-                  Columns: {selectedComponents.map((c) => labelForComponentId(c)).join(", ")}
-                </div>
-              </div>
-              {!editingSubmission ? (
+
+          <ScoreMatrix
+            batch={batch}
+            scores={scores}
+            disabled={!isEditable}
+            onCellChange={setCell}
+          />
+
+          {!isEditable ? (
+            <p className="rounded-md border border-[#cfddec] bg-[#eef4fa] px-3 py-2 text-[12px] text-[#1f5b94]">
+              This batch is in <strong>{batch.status}</strong>. Reopen it to edit
+              scores again.
+            </p>
+          ) : null}
+
+          {scoreSaveError ? (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {scoreSaveError}
+            </p>
+          ) : null}
+          {scoreSaveMsg ? (
+            <p className="rounded-md border border-[#cae6cf] bg-[#ecf8ef] px-3 py-2 text-[12px] text-[#1f7a3a]">
+              {scoreSaveMsg}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="text-[12px] text-[#5a5a5a]">
+              {incompleteCount === 0
+                ? "All students have a score in every component — ready to submit."
+                : `${incompleteCount} student${incompleteCount === 1 ? "" : "s"} still missing at least one score.`}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {isEditable ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void saveAllScores()}
+                    disabled={scoreSaveBusy}
+                    className="h-[36px] rounded-md border border-[#9bb0cc] bg-white px-4 text-[12.5px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
+                  >
+                    {scoreSaveBusy ? "Saving…" : "Save scores"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void doSubmit()}
+                    disabled={submitBusy || incompleteCount > 0}
+                    title={
+                      incompleteCount > 0
+                        ? "Fill every cell before submitting."
+                        : "Submit for agent review and department-head decision."
+                    }
+                    className="h-[36px] rounded-md bg-[#1f7a3a] px-4 text-[12.5px] font-semibold text-white hover:bg-[#1a6932] disabled:opacity-60"
+                  >
+                    {submitBusy ? "Submitting…" : "Submit for review"}
+                  </button>
+                </>
+              ) : null}
+
+              {batch.status === "FLAGGED" || batch.status === "REJECTED" ? (
                 <button
                   type="button"
-                  onClick={goBack}
-                  className="h-[36px] rounded-md border border-[#9bb0cc] bg-white px-4 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#f8fafc]"
+                  onClick={() => void doReopen()}
+                  disabled={reopenBusy}
+                  className="h-[36px] rounded-md border border-[#9bb0cc] bg-white px-4 text-[12.5px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
                 >
-                  Back
+                  {reopenBusy ? "Reopening…" : "Reopen for editing"}
                 </button>
               ) : null}
             </div>
+          </div>
 
-            <input
-              ref={excelInputRef}
-              type="file"
-              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-              className="hidden"
-              onChange={handleExcelFileChange}
-            />
+          {submitError ? (
+            <p className="whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {submitError}
+            </p>
+          ) : null}
 
-            <div className="flex flex-col gap-3 rounded-lg border border-dashed border-[#9bb0cc] bg-[#f8fafc] p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  disabled={students.length === 0 || selectedComponents.length === 0}
-                  onClick={() => excelInputRef.current?.click()}
-                  className="h-[38px] rounded-md border border-[#2f76b7] bg-white px-4 text-[13px] font-semibold text-[#2f76b7] hover:bg-[#eef6ff] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Import from Excel
-                </button>
-                {excelImport ? (
-                  <button
-                    type="button"
-                    onClick={discardExcelImport}
-                    className="h-[38px] rounded-md border border-gray-300 bg-white px-4 text-[13px] font-semibold text-[#4b5563] hover:bg-gray-50"
-                  >
-                    Discard import
-                  </button>
-                ) : null}
+          {submitResult ? (
+            <div className="space-y-3 rounded-xl border border-[#cfddec] bg-[#f6f9fc] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-[14px] font-bold text-[#1f2f40]">
+                  Submission result
+                </h3>
+                <VerdictPill verdict={submitResult.agent_verdict} />
               </div>
-              <p className="text-[12px] leading-relaxed text-[#5a5a5a]">
-                Row 1 must be headers. Required: an admission column (e.g. &quot;Admission Number&quot;) and one column
-                per selected assessment, titled exactly like the labels below (e.g. &quot;Quiz 1&quot;). Optional:
-                &quot;Full Name&quot;.
+              <p className="text-[12.5px] text-[#1f2f40]">
+                Status: <strong>{submitResult.status}</strong> · iteration{" "}
+                {submitResult.iteration}
               </p>
-              <p className="text-[11px] font-mono text-[#374151]">
-                {expectedExcelHeaders(selectedComponents).join(" · ")}
-              </p>
-            </div>
-
-            {excelImport && excelFileName ? (
-              <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="text-[14px] font-bold text-[#1a1a1a]">Import preview</div>
-                  <div className="text-[12px] text-[#6b7280]">{excelFileName}</div>
-                </div>
-
-                {excelImport.errors.length > 0 ? (
-                  <ul className="list-inside list-disc rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800">
-                    {excelImport.errors.map((err) => (
-                      <li key={err}>{err}</li>
+              {submitResult.agent_reasoning ? (
+                <p className="whitespace-pre-wrap rounded-md border border-gray-200 bg-white p-3 text-[12.5px] text-[#1f2f40]">
+                  {submitResult.agent_reasoning}
+                </p>
+              ) : null}
+              {submitResult.agent_flags.length > 0 ? (
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#a31a1a]">
+                    Flags
+                  </p>
+                  <ul className="list-disc space-y-1 pl-4 text-[12px] text-[#3a3a3a]">
+                    {submitResult.agent_flags.map((f, i) => (
+                      <li key={`flag-${i}`}>
+                        <code className="break-all text-[11.5px] text-[#1f2f40]">
+                          {JSON.stringify(f)}
+                        </code>
+                      </li>
                     ))}
                   </ul>
-                ) : null}
-
-                {excelImport.rows.length > 0 ? (
-                  <>
-                    <p className="text-[12px] text-[#4b5568]">
-                      {excelImport.summary.dataRows} row(s) · {excelImport.summary.matchedRows} matched roster ·{" "}
-                      {excelImport.summary.unmatchedRows} not on roster · {excelImport.summary.rowsWithCellIssues}{" "}
-                      row(s) with invalid numbers
-                    </p>
-                    <div className="max-h-[min(50vh,420px)] overflow-auto rounded-md border border-gray-200">
-                      <table className="w-full min-w-[640px] border-collapse text-left text-[12px]">
-                        <thead className="sticky top-0 z-10 bg-[#f0f4fa] text-[10px] font-semibold uppercase tracking-wide text-[#4b5563]">
-                          <tr>
-                            <th className="border-b border-gray-200 px-2 py-2">#</th>
-                            <th className="border-b border-gray-200 px-2 py-2">Admission</th>
-                            <th className="border-b border-gray-200 px-2 py-2">Name</th>
-                            {selectedComponents.map((cid) => (
-                              <th key={cid} className="border-b border-gray-200 px-2 py-2 whitespace-nowrap">
-                                {labelForComponentId(cid)}
-                              </th>
-                            ))}
-                            <th className="border-b border-gray-200 px-2 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {excelImport.rows.map((row, idx) => {
-                            const statusParts: string[] = [...row.rowIssues];
-                            for (const cid of selectedComponents) {
-                              const ci = row.cellIssues[cid];
-                              if (ci) statusParts.push(`${labelForComponentId(cid)}: ${ci}`);
-                            }
-                            const ok = row.rosterStudentId && statusParts.length === 0;
-                            return (
-                              <tr key={`excel-preview-${idx}`} className="border-b border-gray-100">
-                                <td className="px-2 py-1.5 text-[#6b7280]">{row.sheetRow}</td>
-                                <td className="px-2 py-1.5 font-medium">{row.admissionNumber}</td>
-                                <td className="px-2 py-1.5 text-[#4b5568]">{row.fullName || "—"}</td>
-                                {selectedComponents.map((cid) => {
-                                  const v = row.scores[cid] ?? "";
-                                  const bad = Boolean(row.cellIssues[cid]);
-                                  return (
-                                    <td
-                                      key={cid}
-                                      className={`px-2 py-1.5 tabular-nums ${bad ? "bg-red-50 text-red-800" : ""}`}
-                                    >
-                                      {v || "—"}
-                                    </td>
-                                  );
-                                })}
-                                <td className="px-2 py-1.5">
-                                  {ok ? (
-                                    <span className="text-emerald-700">OK</span>
-                                  ) : (
-                                    <span className="text-red-700">{statusParts.join("; ") || "—"}</span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        disabled={excelImportHasAnyIssue(excelImport)}
-                        onClick={applyExcelImport}
-                        className="h-[40px] rounded-md bg-[#2f76b7] px-5 text-[13px] font-semibold text-white hover:bg-[#265f96] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Apply to grade sheet
-                      </button>
-                      <button
-                        type="button"
-                        onClick={discardExcelImport}
-                        className="h-[40px] rounded-md border border-gray-300 bg-white px-5 text-[13px] font-semibold text-[#4b5563] hover:bg-gray-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="max-h-[min(75vh,680px)] overflow-auto rounded-lg border border-gray-200">
-              <table className="min-w-[720px] w-full border-collapse text-[13px]">
-                <thead>
-                  <tr className="bg-[#f0f4fa] text-left text-[11px] font-semibold uppercase tracking-wide text-[#4b5563] shadow-sm">
-                    <th className="sticky top-0 left-0 z-40 border-b border-r border-gray-200 bg-[#f0f4fa] px-3 py-2 shadow-sm">
-                      Student
-                    </th>
-                    <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#f0f4fa] px-3 py-2">ID</th>
-                    {selectedComponents.map((cid) => (
-                      <th
-                        key={cid}
-                        className="sticky top-0 z-20 border-b border-gray-200 bg-[#f0f4fa] px-2 py-2 whitespace-nowrap"
-                      >
-                        {labelForComponentId(cid)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((s) => (
-                    <tr key={s.id} className="border-b border-gray-100 last:border-0">
-                      <td className="sticky left-0 z-10 border-r border-gray-100 bg-white px-3 py-2 font-medium text-[#1a1a1a] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                        {s.fullName}
-                      </td>
-                      <td className="px-3 py-2 text-[#5a5a5a]">{s.admissionNumber}</td>
-                      {selectedComponents.map((cid) => (
-                        <td key={cid} className="px-2 py-1">
-                          <input
-                            value={scores[s.id]?.[cid] ?? ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setScores((prev) => ({
-                                ...prev,
-                                [s.id]: { ...(prev[s.id] ?? {}), [cid]: v },
-                              }));
-                            }}
-                            inputMode="decimal"
-                            placeholder="—"
-                            className="h-[34px] w-[88px] rounded border border-[#c9d5e8] bg-[#fbfcff] px-2 text-[13px] outline-none focus:border-[#2f76b7]"
-                          />
-                        </td>
-                      ))}
+                </div>
+              ) : null}
+              <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
+                <table className="w-full text-left text-[12.5px]">
+                  <thead className="bg-[#f8fafc] text-[11px] uppercase tracking-wide text-[#5a5a5a]">
+                    <tr>
+                      <th className="px-3 py-2">Student</th>
+                      <th className="px-3 py-2 text-right">Numeric</th>
+                      <th className="px-3 py-2 text-center">Letter</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {aiFeedback ? (
-              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <div className="text-[12px] font-semibold uppercase tracking-wide text-amber-900">
-                  Assistant review · action required
-                </div>
-                <p className="text-[13px] leading-relaxed text-amber-950">{aiFeedback}</p>
-                <div>
-                  <label className="mb-1 block text-[12px] font-semibold text-[#5a3b00]">
-                    Your reasoning for the registrar
-                  </label>
-                  <textarea
-                    value={reasoning}
-                    onChange={(e) => setReasoning(e.target.value)}
-                    rows={5}
-                    placeholder="Explain marking criteria, weighting, verification steps, and any exceptions for this cohort."
-                    className="w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-[13px] outline-none focus:border-[#b45309]"
-                  />
-                </div>
+                  </thead>
+                  <tbody>
+                    {submitResult.grades.map((g) => (
+                      <tr key={g.student_id} className="border-t border-gray-100">
+                        <td className="px-3 py-2">
+                          <div className="font-semibold text-[#1f2f40]">
+                            {g.full_name}
+                          </div>
+                          <div className="font-mono text-[11px] text-[#5a5a5a]">
+                            {g.student_number}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-[#1f5b94]">
+                          {g.numeric_score.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-center font-bold">
+                          {formatLetter(g.letter_grade)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : null}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={busy || students.length === 0}
-                onClick={handleSubmit}
-                className="h-[40px] rounded-md bg-[#3f79b5] px-6 text-[14px] font-semibold text-white hover:bg-[#356e9f] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy ? "Submitting…" : aiFeedback ? "Resubmit with reasoning" : "Submit for review"}
-              </button>
-              <Link href="/submissions" className="text-[13px] font-semibold text-[#2f76b7] hover:underline">
-                View submission history
-              </Link>
             </div>
-          </div>
-        )}
+          ) : null}
+
+          {batch.status === "FLAGGED" ? (
+            <div className="rounded-xl border border-[#f0d9a0] bg-[#fff7e2] p-4">
+              <h3 className="text-[14px] font-bold text-[#1f2f40]">
+                Respond to the agent&apos;s flags
+              </h3>
+              <p className="mt-1 text-[12.5px] text-[#5a5a5a]">
+                Submitting a justification keeps the batch SUBMITTED/FLAGGED but
+                re-runs the agent with your reasoning attached. Use{" "}
+                <em>Reopen</em> if you need to change the scores instead.
+              </p>
+              <textarea
+                value={justifyText}
+                onChange={(e) => setJustifyText(e.target.value)}
+                rows={4}
+                placeholder="Explain why the agent's concerns are unfounded (≥ 10 characters)"
+                className="mt-3 w-full rounded-md border border-[#9bb0cc] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#3f79b5]"
+              />
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void doJustify()}
+                  disabled={justifyBusy}
+                  className="h-[36px] rounded-md bg-[#8a5a00] px-4 text-[12.5px] font-semibold text-white hover:bg-[#714900] disabled:opacity-60"
+                >
+                  {justifyBusy ? "Submitting…" : "Submit justification"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {reviews.length > 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="text-[14px] font-bold text-[#1f2f40]">
+                Agent review history
+              </h3>
+              <ul className="mt-3 space-y-2">
+                {reviews.map((r) => (
+                  <li
+                    key={r.id}
+                    className="rounded-md border border-gray-200 bg-[#fafbfc] p-3 text-[12.5px]"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                          Iter {r.iteration}
+                        </span>
+                        <VerdictPill verdict={r.verdict} />
+                      </div>
+                      <span className="text-[11px] text-[#5a5a5a]">
+                        {new Date(r.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    {r.llm_reasoning ? (
+                      <p className="mt-2 whitespace-pre-wrap text-[#1f2f40]">
+                        {r.llm_reasoning}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+          No grade batch — try reloading.
+        </p>
+      )}
+
+      {error && error.toLowerCase().includes("session has expired") ? (
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="h-[34px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+        >
+          Go to login
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function BreakdownEditor({
+  rows,
+  totalWeight,
+  busy,
+  error,
+  onAdd,
+  onRemove,
+  onChange,
+  onSave,
+}: {
+  rows: { name: string; weight: string; max_score: string }[];
+  totalWeight: number;
+  busy: boolean;
+  error: string | null;
+  onAdd: () => void;
+  onRemove: (idx: number) => void;
+  onChange: (
+    idx: number,
+    key: "name" | "weight" | "max_score",
+    value: string,
+  ) => void;
+  onSave: () => void;
+}) {
+  const sumOk = Math.abs(totalWeight - 100) < 0.01;
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="text-[16px] font-bold text-[#1f2f40]">
+        Define your assessment breakdown
+      </h2>
+      <p className="mt-1 text-[13px] text-[#5a5a5a]">
+        Add the components you actually use in this course — e.g. <em>Midterm</em>,{" "}
+        <em>Final exam</em>, <em>Project</em>. Weights must sum to{" "}
+        <strong>100</strong>. <em>Out of</em> defaults to the weight when blank,
+        so you can grade out of any scale you like.
+      </p>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+              <th className="px-3 py-2 text-left">Name</th>
+              <th className="px-3 py-2 text-right">Weight</th>
+              <th className="px-3 py-2 text-right">Out of</th>
+              <th className="px-3 py-2 text-right">Remove</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-b border-gray-100">
+                <td className="px-3 py-2">
+                  <input
+                    value={r.name}
+                    onChange={(e) => onChange(i, "name", e.target.value)}
+                    placeholder="e.g. Midterm"
+                    className="h-[34px] w-full rounded-md border border-[#9bb0cc] bg-white px-2 text-[13px] outline-none focus:border-[#2f76b7]"
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    value={r.weight}
+                    onChange={(e) => onChange(i, "weight", e.target.value)}
+                    placeholder="30"
+                    inputMode="decimal"
+                    className="h-[34px] w-full rounded-md border border-[#9bb0cc] bg-white px-2 text-right text-[13px] outline-none focus:border-[#2f76b7]"
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    value={r.max_score}
+                    onChange={(e) => onChange(i, "max_score", e.target.value)}
+                    placeholder="(weight)"
+                    inputMode="decimal"
+                    className="h-[34px] w-full rounded-md border border-[#9bb0cc] bg-white px-2 text-right text-[13px] outline-none focus:border-[#2f76b7]"
+                  />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onRemove(i)}
+                    disabled={rows.length === 1}
+                    className="text-[12px] font-semibold text-[#a31a1a] hover:underline disabled:opacity-40"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onAdd}
+          className="h-[34px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+        >
+          + Add component
+        </button>
+        <p
+          className={`text-[12px] font-semibold ${sumOk ? "text-[#1f7a3a]" : "text-[#a31a1a]"}`}
+        >
+          Total weight: {totalWeight.toFixed(2)} / 100
+        </p>
+      </div>
+
+      {error ? (
+        <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={busy || !sumOk}
+          className="h-[40px] rounded-md bg-[#3f79b5] px-6 text-[13px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save breakdown"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ScoreMatrix({
+  batch,
+  scores,
+  disabled,
+  onCellChange,
+}: {
+  batch: GradeBatch;
+  scores: ScoresMap;
+  disabled: boolean;
+  onCellChange: (studentId: string, componentId: string, value: string) => void;
+}) {
+  const components = useMemo(
+    () =>
+      batch.breakdown.components
+        .slice()
+        .sort((a, b) => a.order_index - b.order_index),
+    [batch.breakdown.components],
+  );
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      <table className="w-full min-w-[760px] border-collapse text-[13px]">
+        <thead className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+          <tr>
+            <th className="px-3 py-2 text-left">Student</th>
+            {components.map((c) => (
+              <th key={c.id} className="px-3 py-2 text-right">
+                {c.name}
+                <span className="ml-1 text-[10px] font-normal text-[#5a5a5a]">
+                  /{c.max_score}
+                </span>
+              </th>
+            ))}
+            <th className="px-3 py-2 text-center">Done</th>
+          </tr>
+        </thead>
+        <tbody>
+          {batch.rows.map((row) => (
+            <tr
+              key={row.student_id}
+              className="border-b border-gray-100 last:border-0"
+            >
+              <td className="px-3 py-2">
+                <div className="font-semibold text-[#1f2f40]">{row.full_name}</div>
+                <div className="flex items-center gap-2 text-[11px] text-[#5a5a5a]">
+                  <span className="font-mono">{row.student_number}</span>
+                  {row.is_added_via_drop ? (
+                    <span className="rounded-full bg-[#fff3d4] px-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a5a00]">
+                      add/drop
+                    </span>
+                  ) : null}
+                </div>
+              </td>
+              {components.map((c) => (
+                <td key={c.id} className="px-2 py-1.5 text-right">
+                  <input
+                    value={scores[row.student_id]?.[c.id] ?? ""}
+                    onChange={(e) =>
+                      onCellChange(row.student_id, c.id, e.target.value)
+                    }
+                    placeholder="—"
+                    inputMode="decimal"
+                    disabled={disabled}
+                    className="h-[32px] w-[88px] rounded-md border border-[#9bb0cc] bg-white px-2 text-right text-[13px] outline-none focus:border-[#2f76b7] disabled:bg-[#f1f3f5] disabled:opacity-80"
+                  />
+                </td>
+              ))}
+              <td className="px-3 py-2 text-center">
+                {row.is_complete ? (
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#ecf8ef] text-[12px] font-bold text-[#1f7a3a]">
+                    ✓
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-[#a31a1a]">missing</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

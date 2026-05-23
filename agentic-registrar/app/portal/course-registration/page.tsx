@@ -296,7 +296,7 @@ export default function CourseRegistrationPage() {
                     Next
                   </button>
                 </div>
-              </div>
+              </div>  
          
           </section>
         </div>

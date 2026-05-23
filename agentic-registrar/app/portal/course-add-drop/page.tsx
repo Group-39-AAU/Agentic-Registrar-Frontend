@@ -11,6 +11,7 @@ import {
   submitAddDropBatch,
   type AddDropAction,
   type AddDropPickerResponse,
+  type CatalogAddableRead,
   type RegistrationCourseRead,
 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
@@ -21,16 +22,39 @@ type CourseRow = {
   title: string;
   credit_hours: number;
   reason?: string;
+  /** A request for this row's action is in flight (pending officer). */
+  pending?: boolean;
 };
 
-function toCourseRow(c: RegistrationCourseRead, reason?: string): CourseRow {
+function toCourseRow(
+  c: RegistrationCourseRead,
+  opts: { action: AddDropAction; reason?: string },
+): CourseRow {
   const inner = c.course ?? ({} as RegistrationCourseRead["course"]);
+  const pending =
+    opts.action === "DROP" ? !!c.pending_drop : !!c.pending_add;
   return {
     id: c.course_id,
     code: inner.code ?? "",
     title: inner.title ?? "",
     credit_hours: inner.credit_hours ?? 0,
-    reason,
+    reason: opts.reason,
+    pending,
+  };
+}
+
+function catalogToCourseRow(
+  c: CatalogAddableRead,
+  opts: { reason?: string } = {},
+): CourseRow {
+  const inner = c.course ?? ({} as CatalogAddableRead["course"]);
+  return {
+    id: c.course_id,
+    code: inner.code ?? "",
+    title: inner.title ?? "",
+    credit_hours: inner.credit_hours ?? 0,
+    reason: opts.reason,
+    pending: !!c.pending_add,
   };
 }
 
@@ -152,13 +176,35 @@ function CourseChecklist({
           <ul className="divide-y divide-gray-100">
             {courses.map((c) => {
               const isSel = selected.includes(c.id);
-              return (
-                <li key={c.id}>
-                  <label
-                    className={`flex cursor-pointer items-start gap-3 px-5 py-3 transition-colors ${
-                      isSel ? palette.rowSel : "bg-white hover:bg-[#f6f9fc]"
-                    }`}
-                  >
+              const isPending = !!c.pending;
+              const rowBase = "flex items-start gap-3 px-5 py-3 transition-colors";
+              const rowState = isPending
+                ? "bg-[#fff7e2]/60 cursor-not-allowed"
+                : isSel
+                  ? `${palette.rowSel} cursor-pointer`
+                  : "bg-white hover:bg-[#f6f9fc] cursor-pointer";
+
+              const RowInner = (
+                <>
+                  {isPending ? (
+                    <span
+                      aria-hidden="true"
+                      className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#f0d9a0] text-[#8a5a00]"
+                      title={tone === "add" ? "Add pending" : "Drop pending"}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-2.5 w-2.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 8v5M12 17h.01" />
+                      </svg>
+                    </span>
+                  ) : (
                     <span
                       className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors ${
                         isSel ? palette.checked + " text-white" : "border-[#9bb0cc] bg-white"
@@ -170,30 +216,67 @@ function CourseChecklist({
                         </svg>
                       ) : null}
                     </span>
+                  )}
+                  {!isPending ? (
                     <input
                       type="checkbox"
                       className="sr-only"
                       checked={isSel}
                       onChange={() => onToggle(c.id)}
                     />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="text-[14px] font-semibold text-[#1f2f40]">
-                          <span className="font-mono text-[#1f5b94]">{c.code}</span>
-                          {" · "}
-                          {c.title}
-                        </p>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="text-[14px] font-semibold text-[#1f2f40]">
+                        <span className="font-mono text-[#1f5b94]">{c.code}</span>
+                        {" · "}
+                        {c.title}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {isPending ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#fff3d4] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#8a5a00]">
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-3 w-3"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 8v5M12 17h.01" />
+                            </svg>
+                            {tone === "add" ? "Pending add" : "Pending drop"}
+                          </span>
+                        ) : null}
                         <span className="text-[12px] font-semibold text-[#3a3a3a]">
                           {c.credit_hours} cr
                         </span>
                       </div>
-                      {c.reason ? (
-                        <p className="mt-1 text-[12px] leading-relaxed text-[#5a5a5a]">
-                          {c.reason}
-                        </p>
-                      ) : null}
                     </div>
-                  </label>
+                    {c.reason ? (
+                      <p
+                        className={`mt-1 text-[12px] leading-relaxed ${
+                          isPending ? "text-[#8a5a00]" : "text-[#5a5a5a]"
+                        }`}
+                      >
+                        {c.reason}
+                      </p>
+                    ) : null}
+                  </div>
+                </>
+              );
+
+              return (
+                <li key={c.id}>
+                  {isPending ? (
+                    <div className={`${rowBase} ${rowState}`} aria-disabled="true">
+                      {RowInner}
+                    </div>
+                  ) : (
+                    <label className={`${rowBase} ${rowState}`}>{RowInner}</label>
+                  )}
                 </li>
               );
             })}
@@ -276,15 +359,36 @@ export default function CourseAddDropPage() {
     };
   }, []);
 
-  const ADDABLE: CourseRow[] = useMemo(
-    () => (picker?.dropped_courses ?? []).map((c) => toCourseRow(c)),
-    [picker],
-  );
+  const ADDABLE: CourseRow[] = useMemo(() => {
+    const reAddable = (picker?.dropped_courses ?? []).map((c) =>
+      toCourseRow(c, {
+        action: "ADD",
+        reason: c.pending_add
+          ? "An add request is queued — waiting for confirmation."
+          : undefined,
+      }),
+    );
+    const fromCatalog = (picker?.catalog_courses ?? []).map((c) =>
+      catalogToCourseRow(c, {
+        reason: c.pending_add
+          ? "An add request is queued — waiting for confirmation."
+          : undefined,
+      }),
+    );
+    return [...reAddable, ...fromCatalog];
+  }, [picker]);
   const DROPPABLE: CourseRow[] = useMemo(
     () =>
-      (picker?.active_courses ?? []).map((c) =>
-        toCourseRow(c, "In your current registration."),
-      ),
+      (picker?.active_courses ?? [])
+        .filter((c) => !c.is_dropped)
+        .map((c) =>
+          toCourseRow(c, {
+            action: "DROP",
+            reason: c.pending_drop
+              ? "A drop request is queued — waiting for confirmation."
+              : "In your current registration.",
+          }),
+        ),
     [picker],
   );
 
@@ -293,10 +397,18 @@ export default function CourseAddDropPage() {
   const toggleDrop = (id: string) =>
     setToDrop((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const toggleAllAdd = () =>
-    setToAdd((prev) => (prev.length === ADDABLE.length ? [] : ADDABLE.map((c) => c.id)));
-  const toggleAllDrop = () =>
-    setToDrop((prev) => (prev.length === DROPPABLE.length ? [] : DROPPABLE.map((c) => c.id)));
+  const toggleAllAdd = () => {
+    const eligible = ADDABLE.filter((c) => !c.pending);
+    setToAdd((prev) =>
+      prev.length === eligible.length ? [] : eligible.map((c) => c.id),
+    );
+  };
+  const toggleAllDrop = () => {
+    const eligible = DROPPABLE.filter((c) => !c.pending);
+    setToDrop((prev) =>
+      prev.length === eligible.length ? [] : eligible.map((c) => c.id),
+    );
+  };
 
   const netCredits = useMemo(() => {
     const adding = ADDABLE.filter((c) => toAdd.includes(c.id)).reduce((s, c) => s + c.credit_hours, 0);
@@ -390,7 +502,7 @@ export default function CourseAddDropPage() {
     if (result.ok) {
       setToDrop([]);
       setDropSuccess(
-        `Dropped ${submitted} course${submitted === 1 ? "" : "s"} successfully.`,
+        `Drop request submitted — ${submitted} course${submitted === 1 ? " is" : "s are"} now pending confirmation.`,
       );
       await refreshPicker();
     } else {
@@ -514,18 +626,22 @@ export default function CourseAddDropPage() {
       </main>
 
       <AdvisoryAddDropPanel
-        addCandidates={ADDABLE.map(({ id, code, title, credit_hours }) => ({
-          id,
-          code,
-          title,
-          credit_hours,
-        }))}
-        dropCandidates={DROPPABLE.map(({ id, code, title, credit_hours }) => ({
-          id,
-          code,
-          title,
-          credit_hours,
-        }))}
+        addCandidates={ADDABLE.filter((c) => !c.pending).map(
+          ({ id, code, title, credit_hours }) => ({
+            id,
+            code,
+            title,
+            credit_hours,
+          }),
+        )}
+        dropCandidates={DROPPABLE.filter((c) => !c.pending).map(
+          ({ id, code, title, credit_hours }) => ({
+            id,
+            code,
+            title,
+            credit_hours,
+          }),
+        )}
         initialAddIds={toAdd}
         initialDropIds={toDrop}
       />

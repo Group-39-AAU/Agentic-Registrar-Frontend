@@ -22,6 +22,7 @@ export function getFeatureHref(name: string) {
   if (name === "Registration" || name === "Course Registration") return "/portal/course-registration";
   if (name === "Cost Sharing Form") return "/portal/course-registration/cost-sharing";
   if (name === "Grade Report" || name === "Grade & Results" || name === "Grade and Results") return "/portal/grade-report";
+  if (name === "Registration Slip") return "/portal/academic-standing";
   if (name === "My Schedule") return "/portal/my-schedule";
   if (name === "Course Add/Drop") return "/portal/course-add-drop";
   if (IMPLEMENTED_LINKS.has(name)) return "#";

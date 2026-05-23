@@ -6,13 +6,17 @@ import PortalSideMenu from "@/components/PortalSideMenu";
 import PortalTopStrip from "@/components/PortalTopStrip";
 import {
   ApiError,
+  acceptSectionForCourse,
   fetchCourseTerms,
   fetchMySchedule,
+  fetchScheduleOptionsForCourse,
   type CourseTerm,
   type MyScheduleResponse,
+  type SchedulePendingAddition,
+  type ScheduleSectionOption,
   type ScheduleSlot,
 } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const DAY_ORDER = [
   "MONDAY",
@@ -149,8 +153,68 @@ function parseSlots(slots: ScheduleSlot[]): ParsedSlot[] {
     .filter((s): s is ParsedSlot => s !== null);
 }
 
+function minutesToTimeStr(total: number): string {
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/**
+ * Merge back-to-back slots of the SAME course on the SAME day into one
+ * block. A course split into consecutive hourly rows (e.g. 08:00–09:00
+ * + 09:00–10:00) is shown as a single 08:00–10:00 block. Only contiguous
+ * slots merge — a real gap (e.g. a 10:00–11:00 break) keeps them apart.
+ * A merged block counts as an "addition" if any of its parts came from
+ * an add/drop addition.
+ */
+function mergeContiguousSlots(slots: ParsedSlot[]): ParsedSlot[] {
+  const groups = new Map<string, ParsedSlot[]>();
+  slots.forEach((s) => {
+    const key = `${s.day}__${s.course_id ?? s.course_code}`;
+    const list = groups.get(key) ?? [];
+    list.push(s);
+    groups.set(key, list);
+  });
+
+  const merged: ParsedSlot[] = [];
+  groups.forEach((list) => {
+    const sorted = [...list].sort((a, b) => a.startMin - b.startMin);
+    let run: ParsedSlot | null = null;
+    const rooms = new Set<string>();
+    let isAddition = false;
+
+    const flush = () => {
+      if (!run) return;
+      merged.push({
+        ...run,
+        start_time: minutesToTimeStr(run.startMin),
+        end_time: minutesToTimeStr(run.endMin),
+        room: rooms.size > 0 ? Array.from(rooms).join(", ") : run.room,
+        source: isAddition ? "addition" : run.source,
+      });
+    };
+
+    sorted.forEach((s) => {
+      if (run && s.startMin <= run.endMin) {
+        // contiguous (or overlapping) — extend the running block
+        run = { ...run, endMin: Math.max(run.endMin, s.endMin) };
+      } else {
+        flush();
+        run = { ...s };
+        rooms.clear();
+        isAddition = false;
+      }
+      if (s.room) rooms.add(s.room);
+      if (s.source === "addition") isAddition = true;
+    });
+    flush();
+  });
+
+  return merged;
+}
+
 function WeeklyGrid({ slots }: { slots: ScheduleSlot[] }) {
-  const parsed = useMemo(() => parseSlots(slots), [slots]);
+  const parsed = useMemo(() => mergeContiguousSlots(parseSlots(slots)), [slots]);
 
   if (parsed.length === 0) {
     return (
@@ -244,8 +308,13 @@ function WeeklyGrid({ slots }: { slots: ScheduleSlot[] }) {
                       style={{ top: `${top}px`, height: `${height}px` }}
                     >
                       <div className={`absolute left-0 top-0 h-full w-[3px] rounded-l-md ${palette.accent}`} />
+                      {slot.source === "addition" ? (
+                        <span className="absolute right-1 top-1 rounded-full bg-[#c98c2a] px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-white shadow-sm">
+                          Added
+                        </span>
+                      ) : null}
                       <div className={`pl-1 ${palette.text}`}>
-                        <p className="truncate text-[11px] font-semibold uppercase tracking-wide">
+                        <p className={`truncate text-[11px] font-semibold uppercase tracking-wide ${slot.source === "addition" ? "pr-10" : ""}`}>
                           {slot.course_code}
                         </p>
                         <p
@@ -278,6 +347,216 @@ function WeeklyGrid({ slots }: { slots: ScheduleSlot[] }) {
   );
 }
 
+function fmtTime(t: string): string {
+  return t ? t.slice(0, 5) : t;
+}
+
+function SlotLine({ slot }: { slot: { day_of_week: string; start_time: string; end_time: string; room?: string } }) {
+  const day = normalizeDay(slot.day_of_week);
+  return (
+    <span className="tabular-nums">
+      {day ? DAY_LABEL[day] : slot.day_of_week} {fmtTime(slot.start_time)}–{fmtTime(slot.end_time)}
+      {slot.room ? ` · Room ${slot.room}` : ""}
+    </span>
+  );
+}
+
+function SectionPickerModal({
+  addition,
+  termId,
+  onClose,
+  onAccepted,
+}: {
+  addition: SchedulePendingAddition;
+  termId: string;
+  onClose: () => void;
+  onAccepted: () => void;
+}) {
+  const [options, setOptions] = useState<ScheduleSectionOption[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchScheduleOptionsForCourse(addition.course_id, termId)
+      .then((data) => {
+        if (!cancelled) setOptions(data.options ?? []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof ApiError) {
+          setError(
+            err.message && err.message !== "Request failed"
+              ? err.message
+              : `Could not load section options (status ${err.status}).`,
+          );
+        } else {
+          setError("Could not load section options.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addition.course_id, termId]);
+
+  async function handlePick(sectionId: string) {
+    if (submittingId) return;
+    setSubmittingId(sectionId);
+    setSubmitError(null);
+    try {
+      await acceptSectionForCourse(addition.course_id, sectionId, termId);
+      onAccepted();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 409) {
+        setSubmitError(
+          err.message && err.message !== "Request failed"
+            ? err.message
+            : "That section now conflicts with your schedule. Refresh and try another.",
+        );
+      } else if (err instanceof ApiError) {
+        setSubmitError(
+          err.message && err.message !== "Request failed"
+            ? err.message
+            : `Could not add the section (status ${err.status}).`,
+        );
+      } else {
+        setSubmitError("Could not add the section.");
+      }
+      setSubmittingId(null);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="section-picker-title"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[8vh]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[80vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[8px] border border-[#d9d9d9] bg-white shadow-[0_10px_30px_-12px_rgba(15,23,42,0.45)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[#e4e4e4] px-5 py-3">
+          <div>
+            <h2 id="section-picker-title" className="text-[16px] font-semibold text-[#1f1f1f]">
+              Choose a section
+            </h2>
+            <p className="text-[12px] text-[#5a5a5a]">
+              {addition.course_code} · {addition.course_title}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="text-[22px] leading-none text-[#5a5a5a] hover:text-[#1f1f1f]"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-4">
+          {loading ? (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#cfddec] border-t-[#2f78b7]" />
+              <p className="text-[13px] text-[#5a5a5a]">Loading section options…</p>
+            </div>
+          ) : error ? (
+            <p className="rounded-md border border-[#f0bcbc] bg-[#fdebeb] px-3 py-3 text-[13px] font-semibold text-[#a31a1a]">
+              {error}
+            </p>
+          ) : !options || options.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-[#cfddec] bg-[#f6f9fc] px-4 py-8 text-center text-[13px] text-[#5a5a5a]">
+              No sections are currently scheduled for this course. Check back once the registrar runs scheduling.
+            </p>
+          ) : (
+            <>
+              {submitError ? (
+                <p className="mb-3 rounded-md border border-[#f0bcbc] bg-[#fdebeb] px-3 py-2 text-[12px] font-semibold text-[#a31a1a]">
+                  {submitError}
+                </p>
+              ) : null}
+              <ul className="space-y-3">
+                {options.map((opt) => {
+                  const busy = submittingId === opt.section_id;
+                  return (
+                    <li
+                      key={opt.section_id}
+                      className={`rounded-lg border px-4 py-3 ${
+                        opt.is_viable
+                          ? "border-[#cfddec] bg-white"
+                          : "border-[#f0d9d9] bg-[#fdf4f4]"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                          <span className="rounded-full bg-[#eef4fa] px-2.5 py-1 font-semibold text-[#1f5b94]">
+                            Section {opt.section_code}
+                          </span>
+                          {opt.is_viable ? (
+                            <span className="rounded-full bg-[#e9f6ec] px-2.5 py-1 font-semibold text-[#1f6d33]">
+                              No conflicts
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-[#fcecec] px-2.5 py-1 font-semibold text-[#8b2c2c]">
+                              {opt.conflicts.length} conflict{opt.conflicts.length === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!opt.is_viable || busy}
+                          onClick={() => handlePick(opt.section_id)}
+                          className="rounded-md bg-[#2f76b7] px-3.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#27689f] disabled:cursor-not-allowed disabled:bg-[#b9c6d4]"
+                        >
+                          {busy ? "Adding…" : opt.is_viable ? "Add this section" : "Unavailable"}
+                        </button>
+                      </div>
+
+                      <ul className="mt-2 space-y-1 text-[12px] text-[#3a3a3a]">
+                        {opt.slots.map((s) => (
+                          <li key={s.slot_id} className="flex items-center gap-1.5">
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#2f76b7]" />
+                            <SlotLine slot={s} />
+                          </li>
+                        ))}
+                      </ul>
+
+                      {!opt.is_viable && opt.conflicts.length > 0 ? (
+                        <div className="mt-2 rounded-md border border-[#f0d9d9] bg-[#fff5f5] px-3 py-2 text-[11.5px] text-[#8b2c2c]">
+                          <p className="mb-1 font-semibold uppercase tracking-wide">Clashes with</p>
+                          <ul className="space-y-1">
+                            {opt.conflicts.map((c, i) => (
+                              <li key={`${opt.section_id}-conflict-${i}`}>
+                                <SlotLine slot={c.candidate} /> overlaps{" "}
+                                <span className="font-semibold">{c.collides_with.course_code}</span>{" "}
+                                (<SlotLine slot={c.collides_with} />)
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MySchedulePage() {
   const [terms, setTerms] = useState<CourseTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);
@@ -289,6 +568,7 @@ export default function MySchedulePage() {
   const [schedule, setSchedule] = useState<MyScheduleResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickerCourse, setPickerCourse] = useState<SchedulePendingAddition | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,23 +612,17 @@ export default function MySchedulePage() {
     return (termsByYear.get(academicYear) ?? []).find((t) => t.phase === calendarSemester) ?? null;
   }, [academicYear, calendarSemester, termsByYear]);
 
-  useEffect(() => {
-    if (!selectedTerm) {
-      setSchedule(null);
+  const loadSchedule = useCallback(
+    async (termId: string, opts: { silent?: boolean } = {}) => {
+      if (!opts.silent) {
+        setLoading(true);
+        setSchedule(null);
+      }
       setError(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setSchedule(null);
-    fetchMySchedule(selectedTerm.id)
-      .then((data) => {
-        if (cancelled) return;
+      try {
+        const data = await fetchMySchedule(termId);
         setSchedule(data);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
+      } catch (err: unknown) {
         if (err instanceof ApiError && err.status === 404) {
           setError("Schedule is not available for the selected semester.");
         } else if (err instanceof ApiError) {
@@ -360,14 +634,21 @@ export default function MySchedulePage() {
         } else {
           setError("Schedule is not available for the selected semester.");
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedTerm]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!selectedTerm) {
+      setSchedule(null);
+      setError(null);
+      return;
+    }
+    void loadSchedule(selectedTerm.id);
+  }, [selectedTerm, loadSchedule]);
 
   function handleYearChange(v: string) {
     setAcademicYear(v);
@@ -501,19 +782,31 @@ export default function MySchedulePage() {
 
                   {schedule && schedule.pending_additions && schedule.pending_additions.length > 0 ? (
                     <div className="aau-card mt-5 rounded-xl p-4 md:p-5">
-                      <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#8a5a00]">
+                      <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#8a5a00]">
                         Pending additions
+                      </p>
+                      <p className="mb-3 text-[12px] text-[#5a5a5a]">
+                        These added courses aren&apos;t on your timetable yet. Pick a section that doesn&apos;t
+                        clash with your current schedule to slot each one in.
                       </p>
                       <ul className="space-y-2">
                         {schedule.pending_additions.map((p) => (
-                          <li
-                            key={p.course_id}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-[13px] text-[#8a5a00]"
-                          >
-                            <span className="font-semibold">
-                              {p.course_code} · {p.course_title}
-                            </span>
-                            <span className="text-[12px]">{p.credit_hours} cr</span>
+                          <li key={p.course_id}>
+                            <button
+                              type="button"
+                              onClick={() => setPickerCourse(p)}
+                              className="flex w-full flex-wrap items-center justify-between gap-2 rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-left text-[13px] text-[#8a5a00] transition-colors hover:border-[#e6c477] hover:bg-[#fdefcf]"
+                            >
+                              <span className="font-semibold">
+                                {p.course_code} · {p.course_title}
+                              </span>
+                              <span className="flex items-center gap-2 text-[12px]">
+                                {p.credit_hours} cr
+                                <span className="rounded-full bg-[#c98c2a] px-2.5 py-1 text-[11px] font-semibold text-white">
+                                  Choose section
+                                </span>
+                              </span>
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -526,6 +819,18 @@ export default function MySchedulePage() {
         </div>
       </main>
       <PortalFooter />
+
+      {pickerCourse && selectedTerm ? (
+        <SectionPickerModal
+          addition={pickerCourse}
+          termId={selectedTerm.id}
+          onClose={() => setPickerCourse(null)}
+          onAccepted={() => {
+            setPickerCourse(null);
+            void loadSchedule(selectedTerm.id, { silent: true });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

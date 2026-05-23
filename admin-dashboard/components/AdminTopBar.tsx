@@ -15,6 +15,13 @@ const ADMISSION_LINKS: NavLink[] = [
 
 const COURSE_MANAGEMENT_HREF = "/officer";
 
+const COURSE_MANAGEMENT_LINKS: NavLink[] = [
+  { href: "/officer", label: "Operations" },
+  { href: "/officer/add-drop", label: "Add / Drop" },
+  { href: "/officer/grading", label: "Grade Authorisation" },
+  { href: "/officer/exceptions", label: "Exception Queue" },
+];
+
 function AAULogoSmall() {
   return (
     <div className="flex items-center">
@@ -58,8 +65,11 @@ export default function AdminTopBar() {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [admissionOpen, setAdmissionOpen] = useState(false);
+  const [courseOpen, setCourseOpen] = useState(false);
   const [mobileAdmissionOpen, setMobileAdmissionOpen] = useState(false);
+  const [mobileCourseOpen, setMobileCourseOpen] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeCourseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const admissionActive = ADMISSION_LINKS.some((l) => pathname.startsWith(l.href));
   const courseManagementActive = pathname.startsWith(COURSE_MANAGEMENT_HREF);
@@ -67,6 +77,7 @@ export default function AdminTopBar() {
   // Close hover dropdown if we navigate away
   useEffect(() => {
     setAdmissionOpen(false);
+    setCourseOpen(false);
   }, [pathname]);
 
   function openAdmission() {
@@ -78,6 +89,17 @@ export default function AdminTopBar() {
   }
   function scheduleCloseAdmission() {
     closeTimerRef.current = setTimeout(() => setAdmissionOpen(false), 120);
+  }
+
+  function openCourse() {
+    if (closeCourseTimerRef.current) {
+      clearTimeout(closeCourseTimerRef.current);
+      closeCourseTimerRef.current = null;
+    }
+    setCourseOpen(true);
+  }
+  function scheduleCloseCourse() {
+    closeCourseTimerRef.current = setTimeout(() => setCourseOpen(false), 120);
   }
 
   function handleLogout() {
@@ -152,23 +174,65 @@ export default function AdminTopBar() {
             </div>
           </div>
 
-          {/* Course Management */}
-          <Link
-            href={COURSE_MANAGEMENT_HREF}
-            className={`relative rounded-md px-3 py-2 uppercase transition-colors ${
-              courseManagementActive
-                ? "text-[#2f76b7]"
-                : "hover:bg-[#2f76b7]/[0.06] hover:text-[#2f76b7]"
-            }`}
+          {/* Course Management dropdown */}
+          <div
+            className="relative"
+            onMouseEnter={openCourse}
+            onMouseLeave={scheduleCloseCourse}
           >
-            Course Management
-            {courseManagementActive ? (
-              <span
-                aria-hidden="true"
-                className="absolute inset-x-2 -bottom-[18px] h-[2px] rounded-t bg-[linear-gradient(90deg,transparent,#2f76b7,transparent)]"
-              />
-            ) : null}
-          </Link>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={courseOpen}
+              onClick={() => setCourseOpen((v) => !v)}
+              className={`relative inline-flex items-center gap-1.5 rounded-md px-3 py-2 uppercase transition-colors ${
+                courseManagementActive
+                  ? "text-[#2f76b7]"
+                  : "hover:bg-[#2f76b7]/[0.06] hover:text-[#2f76b7]"
+              }`}
+            >
+              Course Management
+              <ChevronDown />
+              {courseManagementActive ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-2 -bottom-[18px] h-[2px] rounded-t bg-[linear-gradient(90deg,transparent,#2f76b7,transparent)]"
+                />
+              ) : null}
+            </button>
+
+            <div
+              role="menu"
+              aria-label="Course management menu"
+              className={`absolute right-0 top-full z-50 mt-2 w-[220px] origin-top rounded-xl border border-[#d4dbe2] bg-[linear-gradient(180deg,#ffffff_0%,#f5f7fa_100%)] p-1.5 shadow-[0_18px_40px_-18px_rgba(15,23,42,0.35),0_2px_8px_-4px_rgba(15,23,42,0.18)] transition-[opacity,clip-path,transform] duration-300 ease-out ${
+                courseOpen
+                  ? "pointer-events-auto translate-y-0 opacity-100 [clip-path:inset(0_0_0_0)]"
+                  : "pointer-events-none -translate-y-1 opacity-0 [clip-path:inset(0_0_100%_0)]"
+              }`}
+            >
+              {COURSE_MANAGEMENT_LINKS.map((link) => {
+                const active =
+                  link.href === COURSE_MANAGEMENT_HREF
+                    ? pathname === COURSE_MANAGEMENT_HREF
+                    : pathname.startsWith(link.href);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    role="menuitem"
+                    onClick={() => setCourseOpen(false)}
+                    className={`flex items-center justify-between rounded-md px-3 py-2 text-[12px] uppercase tracking-[0.08em] transition-colors ${
+                      active
+                        ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
+                        : "text-[#384457] hover:bg-[#2f76b7]/[0.06] hover:text-[#2f76b7]"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         </nav>
 
         <button
@@ -261,18 +325,57 @@ export default function AdminTopBar() {
             </div>
           </div>
 
-          {/* Course Management */}
-          <Link
-            href={COURSE_MANAGEMENT_HREF}
-            onClick={() => setMobileOpen(false)}
-            className={`mt-1 rounded-md px-3 py-2.5 text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors ${
-              courseManagementActive
-                ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
-                : "text-[#384457] hover:bg-black/[0.03]"
-            }`}
-          >
-            Course Management
-          </Link>
+          {/* Course Management group */}
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={() => setMobileCourseOpen((v) => !v)}
+              aria-expanded={mobileCourseOpen}
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2.5 text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors ${
+                courseManagementActive
+                  ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
+                  : "text-[#384457] hover:bg-black/[0.03]"
+              }`}
+            >
+              <span>Course Management</span>
+              <span
+                className={`transition-transform duration-200 ${
+                  mobileCourseOpen ? "rotate-180" : ""
+                }`}
+              >
+                <ChevronDown />
+              </span>
+            </button>
+            <div
+              className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${
+                mobileCourseOpen ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"
+              }`}
+            >
+              <ul className="ml-2 mt-1 border-l border-gray-200 pl-2">
+                {COURSE_MANAGEMENT_LINKS.map((link) => {
+                  const active =
+                    link.href === COURSE_MANAGEMENT_HREF
+                      ? pathname === COURSE_MANAGEMENT_HREF
+                      : pathname.startsWith(link.href);
+                  return (
+                    <li key={link.href}>
+                      <Link
+                        href={link.href}
+                        onClick={() => setMobileOpen(false)}
+                        className={`block rounded-md px-3 py-2 text-[12.5px] uppercase tracking-[0.06em] transition-colors ${
+                          active
+                            ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
+                            : "text-[#384457] hover:bg-black/[0.03]"
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
 
           <button
             type="button"
