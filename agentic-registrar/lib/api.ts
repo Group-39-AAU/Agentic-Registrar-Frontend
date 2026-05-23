@@ -116,6 +116,9 @@ export type LoginRequest = {
 export type LoginResponse = {
   access_token: string;
   token_type: string;
+  /** True when the user must call POST /auth/change-password before any
+   *  other endpoint will accept the token (freshly-onboarded students). */
+  must_change_password?: boolean;
 };
 
 /**
@@ -137,6 +140,68 @@ export async function loginUser(body: LoginRequest): Promise<LoginResponse> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data);
   return data as LoginResponse;
+}
+
+/**
+ * POST /api/v1/auth/forgot-password — request a password-reset email.
+ * Resolves on 204 regardless of whether the email exists (backend
+ * intentionally returns the same shape to prevent enumeration). Other
+ * non-2xx responses still throw so the UI can show a real error.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (res.status === 204) return;
+  const data = await res.json().catch(() => ({}));
+  throw new ApiError(res.status, data);
+}
+
+/**
+ * POST /api/v1/auth/reset-password — finish a password reset using the
+ * token from the email link. Backend verifies the JWT (purpose +
+ * expiry), replaces the user's hash, and clears must_change_password.
+ */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  if (res.status === 204) return;
+  const data = await res.json().catch(() => ({}));
+  throw new ApiError(res.status, data);
+}
+
+/**
+ * POST /api/v1/auth/change-password — replace the temp PIN with a new
+ * password. Requires the just-issued access token; the backend lifts
+ * the must_change_password lockout on success.
+ */
+export async function changePassword(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/change-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (res.status === 204) return;
+  const data = await res.json().catch(() => ({}));
+  throw new ApiError(res.status, data);
 }
 
 export type StudentMeResponse = {

@@ -155,7 +155,6 @@ export default function AdmissionDetailClient({
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [correctionSuccessModalOpen, setCorrectionSuccessModalOpen] = useState(false);
-  const [correctionSubmitted, setCorrectionSubmitted] = useState(false);
 
   const reloadApplication = async () => {
     try {
@@ -207,6 +206,17 @@ export default function AdmissionDetailClient({
     if (!paymentModalOpen || !paymentInit) return;
     setModalPaymentRef(paymentInit.payment_reference);
   }, [paymentModalOpen, paymentInit]);
+
+  // Pre-fill the correction form with the applicant's current values
+  // whenever the app loads in CHANGES_REQUESTED — but only seed each
+  // field once (don't overwrite what the student is actively editing).
+  useEffect(() => {
+    if (!data) return;
+    if ((data.current_status ?? "").toUpperCase() !== "CHANGES_REQUESTED") return;
+    setCorrectionAdmissionNumber((prev) => prev || data.admission_number || "");
+    setCorrectionFirstName((prev) => prev || data.applicant_first_name || "");
+    setCorrectionLastName((prev) => prev || data.applicant_last_name || "");
+  }, [data]);
 
   useEffect(() => {
     if (!paymentModalOpen) return;
@@ -287,7 +297,6 @@ export default function AdmissionDetailClient({
         first_name: firstName,
         last_name: lastName,
       });
-      setCorrectionSubmitted(true);
       setCorrectionSuccessModalOpen(true);
       await reloadApplication();
     } catch (err) {
@@ -486,7 +495,7 @@ export default function AdmissionDetailClient({
         ) : null}
       </div>
 
-      {(data.current_status ?? "").toUpperCase() === "CHANGES_REQUESTED" && !correctionSubmitted ? (
+      {(data.current_status ?? "").toUpperCase() === "CHANGES_REQUESTED" ? (
         <div className="overflow-hidden rounded-xl border border-[#f4d7aa] bg-[#fffaf0] shadow-sm">
           <div className="border-b border-[#f0dfbf] bg-[#fff3df] px-8 py-4">
             <h2 className="text-[15px] font-bold text-[#9a5b00]">Corrections Required</h2>

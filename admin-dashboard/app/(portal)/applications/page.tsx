@@ -6,6 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 
 type AppRow = {
   id?: string;
+  applicant_first_name?: string;
+  applicant_last_name?: string;
+  applicant_email?: string;
   admission_number?: string;
   sponsorship_type?: string;
   stream?: string;
@@ -149,6 +152,7 @@ export default function ApplicationsPage() {
           <table className="w-full min-w-[900px] border-collapse text-left text-[13px]">
             <thead>
               <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                <th className="px-4 py-3">Applicant</th>
                 <th className="px-4 py-3">Admission #</th>
                 <th className="px-4 py-3">Stream</th>
                 <th className="px-4 py-3">Sponsorship</th>
@@ -165,34 +169,42 @@ export default function ApplicationsPage() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row, index) => (
-                  <tr
-                    key={String(row.id ?? row.admission_number ?? index)}
-                    role={row.id ? "link" : undefined}
-                    tabIndex={row.id ? 0 : -1}
-                    className={`border-b border-gray-100 ${row.id ? "cursor-pointer hover:bg-[#eef4ff]/70" : ""}`}
-                    onClick={() => {
-                      if (row.id) router.push(`/applications/${row.id}`);
-                    }}
-                    onKeyDown={(e) => {
-                      if (!row.id) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        router.push(`/applications/${row.id}`);
-                      }
-                    }}
-                  >
-                    <td className="px-4 py-3 font-mono text-[#2f76b7]">{row.admission_number ?? "—"}</td>
-                    <td className="px-4 py-3">{row.stream ?? "—"}</td>
-                    <td className="px-4 py-3">{row.sponsorship_type ?? "—"}</td>
-                    <td className="px-4 py-3">{row.current_status ?? "—"}</td>
-                    <td className="px-4 py-3">{row.payment_status ?? "—"}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#5a5a5a]">
-                      {row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}
-                    </td>
-                    
-                  </tr>
-                ))
+                rows.map((row, index) => {
+                  const name = `${row.applicant_first_name ?? ""} ${row.applicant_last_name ?? ""}`.trim();
+                  return (
+                    <tr
+                      key={String(row.id ?? row.admission_number ?? index)}
+                      role={row.id ? "link" : undefined}
+                      tabIndex={row.id ? 0 : -1}
+                      className={`border-b border-gray-100 ${row.id ? "cursor-pointer hover:bg-[#eef4ff]/70" : ""}`}
+                      onClick={() => {
+                        if (row.id) router.push(`/applications/${row.id}`);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!row.id) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/applications/${row.id}`);
+                        }
+                      }}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="text-[12.5px] font-semibold text-[#1f2f40]">{name || "—"}</div>
+                        {row.applicant_email ? (
+                          <div className="text-[11px] text-[#5a5a5a]">{row.applicant_email}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[#2f76b7]">{row.admission_number ?? "—"}</td>
+                      <td className="px-4 py-3">{row.stream ?? "—"}</td>
+                      <td className="px-4 py-3">{row.sponsorship_type ?? "—"}</td>
+                      <td className="px-4 py-3">{row.current_status ?? "—"}</td>
+                      <td className="px-4 py-3">{row.payment_status ?? "—"}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#5a5a5a]">
+                        {row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

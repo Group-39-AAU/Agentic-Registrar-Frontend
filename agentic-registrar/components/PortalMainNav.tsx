@@ -2,29 +2,71 @@
 
 import { useRef, useState } from "react";
 
+// Names that should remain in-place no-ops (Logout is an action handled
+// inline by PortalSideMenu, not a navigation target).
 export const IMPLEMENTED_LINKS = new Set([
-  "Basic Information",
-  "My Profile",
-  "Grade and Results",
-  "Grade & Results",
-  "Change Password",
   "Logout",
-  "Cost Sharing Form",
-  "Course Add/Drop",
-  "Grade Report",
-  "Assessment Result",
-  "Assesment Result",
 ]);
 
+// Map from nav label → portal route. Names not listed here fall through
+// to /portal/feature-preview as a last resort.
+const ROUTE_MAP: Record<string, string> = {
+  // Core
+  "Home": "/portal/home",
+  "Basic Information": "/portal/basic-information",
+  "My Profile": "/portal/profile",
+  "My Curriculum": "/portal/curriculum",
+  "Placement": "/portal/placement",
+  "Change Password": "/portal/change-password",
+  "User Guide": "/portal/user-guide",
+  // Registration
+  "Registration": "/portal/course-registration",
+  "Course Registration": "/portal/course-registration",
+  "Cost Sharing Form": "/portal/course-registration/cost-sharing",
+  "Upload Bank Receipt": "/portal/upload-bank-receipt",
+  "Course Add/Drop": "/portal/course-add-drop",
+  "Class Admission": "/portal/class-admission",
+  "Bank Account": "/portal/bank-account",
+  "Re-Exam Request": "/portal/re-exam-request",
+  "Makeup Request": "/portal/makeup-request",
+  "Withdrawal Request": "/portal/withdrawal-request",
+  "Readmission Request": "/portal/readmission-request",
+  "Alumni Profile Form": "/portal/alumni-profile",
+  "Clearance Request": "/portal/clearance-request",
+  "Lost ID": "/portal/lost-id",
+  "Registration Slip": "/portal/academic-standing",
+  // Fee
+  "Tuition Fee": "/portal/tuition-fee",
+  "Dormitory Fee": "/portal/dormitory-fee",
+  // Grade & Results
+  "Grade Report": "/portal/grade-report",
+  "Grade & Results": "/portal/grade-report",
+  "Grade and Results": "/portal/grade-report",
+  "Assessment Result": "/portal/grade-report",
+  "Assesment Result": "/portal/grade-report",
+  "Course Checklist": "/portal/course-checklist",
+  "Academic Standing": "/portal/academic-standing",
+  // Instructors / scheduling
+  "Staff Evaluation": "/portal/staff-evaluation",
+  "My Schedule": "/portal/my-schedule",
+  // Student Services
+  "Dormitory Services": "/portal/dormitory-services",
+  "Clinic Services": "/portal/clinic-services",
+  "Catering Services": "/portal/catering-services",
+  "Catering Information": "/portal/catering-information",
+  "Cost Sharing Services": "/portal/cost-sharing-services",
+  "Disability Service Request": "/portal/disability-service-request",
+  "Complaint": "/portal/complaint",
+  "Scholarship": "/portal/scholarship",
+  "Remedial & Retention": "/portal/remedial-retention",
+  "Internship/Externship": "/portal/internship-externship",
+  // Misc
+  "Cocurricular Activities": "/portal/cocurricular-activities",
+};
+
 export function getFeatureHref(name: string) {
-  if (name === "Home") return "/portal/home";
-  if (name === "Basic Information") return "/portal/basic-information";
-  if (name === "Registration" || name === "Course Registration") return "/portal/course-registration";
-  if (name === "Cost Sharing Form") return "/portal/course-registration/cost-sharing";
-  if (name === "Grade Report" || name === "Grade & Results" || name === "Grade and Results") return "/portal/grade-report";
-  if (name === "Registration Slip") return "/portal/academic-standing";
-  if (name === "My Schedule") return "/portal/my-schedule";
-  if (name === "Course Add/Drop") return "/portal/course-add-drop";
+  const direct = ROUTE_MAP[name];
+  if (direct) return direct;
   if (IMPLEMENTED_LINKS.has(name)) return "#";
   return `/portal/feature-preview?name=${encodeURIComponent(name)}`;
 }
