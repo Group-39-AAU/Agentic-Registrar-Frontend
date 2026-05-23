@@ -182,7 +182,7 @@ export default function AdmissionsPage() {
   return (
     <div className="min-h-screen bg-white font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
       <main className="">
-        <section className="relative h-[50rem]">
+        <section className="relative h-[18rem] md:h-[50rem]">
           <img
             src="https://admission.aau.edu.et/AAU/coursel-image-2.jpg"
             alt="Addis Ababa University archway"

@@ -1,63 +1,115 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { TeacherCourse } from "@/lib/mockCourses";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  calendarSemesterLabel,
-  CALENDAR_SEMESTER_OPTIONS,
-  MAX_ACTIVE_TEACHER_COURSES,
-  parseCalendarSemesterId,
-  STATIC_COURSE_COUNT,
-  staticStudentCountForCourse,
-  TEACHER_ACADEMIC_YEARS,
-} from "@/lib/mockCourses";
-import { fetchTeacherCourses } from "@/lib/teacherApi";
+  ApiError,
+  fetchMySections,
+  fetchTerms,
+  formatPhase,
+  type CourseTerm,
+  type InstructorSectionAssignment,
+} from "@/lib/gradingApi";
 
 export default function CoursesPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const yearFromUrl = searchParams.get("year");
-  const semesterFromUrl = parseCalendarSemesterId(searchParams.get("semester"));
+  const termFromUrl = searchParams.get("term_id") ?? "";
 
-  const [pickerYear, setPickerYear] = useState<string>(TEACHER_ACADEMIC_YEARS[TEACHER_ACADEMIC_YEARS.length - 1]);
-  const [pickerSemester, setPickerSemester] = useState<(typeof CALENDAR_SEMESTER_OPTIONS)[number]["id"]>("1");
+  const [terms, setTerms] = useState<CourseTerm[]>([]);
+  const [termsLoading, setTermsLoading] = useState(true);
+  const [termsError, setTermsError] = useState<string | null>(null);
 
-  const [courses, setCourses] = useState<TeacherCourse[]>([]);
+  const [pickerTerm, setPickerTerm] = useState<string>(termFromUrl);
+  const [sections, setSections] = useState<InstructorSectionAssignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const semesterChosen = Boolean(yearFromUrl && semesterFromUrl);
-
+  // Load term catalog.
   useEffect(() => {
-    if (!yearFromUrl || !semesterFromUrl) {
-      setCourses([]);
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetchTeacherCourses(yearFromUrl, semesterFromUrl)
-      .then((list) => {
-        if (!cancelled) setCourses(list);
+    setTermsLoading(true);
+    setTermsError(null);
+    fetchTerms()
+      .then((rows) => {
+        if (cancelled) return;
+        setTerms(rows);
+        // If no term has been picked yet, default to the open term
+        // (or the most recent one).
+        if (!termFromUrl) {
+          const openTerm = rows.find((t) => t.is_open);
+          const fallback = openTerm ?? rows[0];
+          if (fallback) setPickerTerm(fallback.id);
+        }
       })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load courses.");
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        if (e instanceof ApiError) {
+          setTermsError(
+            e.status === 401
+              ? "Your session has expired — please log in again."
+              : e.message ?? "Could not load terms.",
+          );
+        } else {
+          setTermsError("Could not load terms.");
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setTermsLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [yearFromUrl, semesterFromUrl]);
+  }, [termFromUrl]);
 
-  function applySemesterChoice() {
+  // Load my sections when a term is in the URL.
+  const loadSections = useCallback(
+    async (termId: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const rows = await fetchMySections(termId);
+        setSections(rows);
+      } catch (e: unknown) {
+        if (e instanceof ApiError) {
+          if (e.status === 403) {
+            setError(
+              "Your account isn't authorised as an instructor for this surface.",
+            );
+          } else if (e.status === 401) {
+            setError("Your session has expired — please log in again.");
+          } else {
+            setError(e.message ?? "Could not load your sections.");
+          }
+        } else {
+          setError("Could not load your sections.");
+        }
+        setSections([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!termFromUrl) {
+      setSections([]);
+      return;
+    }
+    void loadSections(termFromUrl);
+  }, [termFromUrl, loadSections]);
+
+  const selectedTerm = useMemo(
+    () => terms.find((t) => t.id === termFromUrl) ?? null,
+    [terms, termFromUrl],
+  );
+
+  function applyTermChoice() {
+    if (!pickerTerm) return;
     const params = new URLSearchParams();
-    params.set("year", pickerYear);
-    params.set("semester", pickerSemester);
+    params.set("term_id", pickerTerm);
     router.replace(`/courses?${params.toString()}`);
   }
 
@@ -66,120 +118,136 @@ export default function CoursesPageClient() {
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <h1 className="text-[22px] font-bold text-[#2a66a7]">My courses</h1>
         <p className="mt-2 text-[14px] text-[#4a5568]">
-          Choose the academic year and calendar semester first. You will see at most {MAX_ACTIVE_TEACHER_COURSES}{" "}
-          active courses for that period (demo data from a catalog of {STATIC_COURSE_COUNT} sections with large
-          rosters).
+          Pick a term to see every (section × course) pair you teach. Click
+          “Enter grades” to define the assessment breakdown, score the roster,
+          and submit for department-head review.
         </p>
       </div>
 
-      {!semesterChosen ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-[16px] font-bold text-[#1a1a1a]">Select period</h2>
-          <p className="mt-2 text-[13px] text-[#5a5a5a]">
-            Pick the academic year and calendar semester (one, two, or three) to load your assigned sections.
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        {termsError ? (
+          <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+            {termsError}
           </p>
-          <div className="mt-5 flex max-w-[520px] flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <label className="mb-1 block text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
-                Academic year
-              </label>
-              <select
-                value={pickerYear}
-                onChange={(e) => setPickerYear(e.target.value)}
-                className="h-[42px] w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7]"
-              >
-                {TEACHER_ACADEMIC_YEARS.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="mb-1 block text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
-                Calendar semester
-              </label>
-              <select
-                value={pickerSemester}
-                onChange={(e) =>
-                  setPickerSemester(e.target.value as (typeof CALENDAR_SEMESTER_OPTIONS)[number]["id"])
-                }
-                className="h-[42px] w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7]"
-              >
-                {CALENDAR_SEMESTER_OPTIONS.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={applySemesterChoice}
-              className="h-[42px] shrink-0 rounded-md bg-[#3f79b5] px-6 text-[14px] font-semibold text-white hover:bg-[#356e9f]"
+        ) : null}
+        <div className="flex max-w-[560px] flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <label className="mb-1 block text-[12px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+              Academic term
+            </label>
+            <select
+              value={pickerTerm}
+              onChange={(e) => setPickerTerm(e.target.value)}
+              disabled={termsLoading || terms.length === 0}
+              className="h-[42px] w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none focus:border-[#2f76b7] disabled:opacity-60"
             >
-              View courses
-            </button>
+              <option value="">
+                {termsLoading
+                  ? "Loading terms…"
+                  : terms.length === 0
+                    ? "No terms available"
+                    : "Select a term"}
+              </option>
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.term_name} · {formatPhase(t.phase)}
+                  {t.is_open ? " · open" : ""}
+                </option>
+              ))}
+            </select>
           </div>
+          <button
+            type="button"
+            onClick={applyTermChoice}
+            disabled={!pickerTerm}
+            className="h-[42px] shrink-0 rounded-md bg-[#3f79b5] px-6 text-[14px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
+          >
+            Load sections
+          </button>
         </div>
-      ) : null}
+      </div>
 
-      {semesterChosen ? (
+      {selectedTerm ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#cfe0f5] bg-[#f0f7ff] px-4 py-3 text-[13px] text-[#1a365d]">
           <span>
-            Showing <strong>{yearFromUrl}</strong> · calendar semester <strong>{calendarSemesterLabel(semesterFromUrl!)}</strong> · up to{" "}
-            {MAX_ACTIVE_TEACHER_COURSES} courses
+            Showing sections for{" "}
+            <strong>
+              {selectedTerm.term_name} · {formatPhase(selectedTerm.phase)}
+            </strong>
+            {selectedTerm.is_open ? " · open" : ""}
           </span>
           <button
             type="button"
             onClick={() => router.replace("/courses")}
             className="text-[12px] font-semibold text-[#2f76b7] underline"
           >
-            Change year / semester
+            Change term
           </button>
         </div>
       ) : null}
 
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">{error}</p>
-      ) : null}
-
-      {semesterChosen && loading ? (
-        <p className="text-[13px] text-[#5a5a5a]">Loading courses…</p>
-      ) : null}
-
-      {semesterChosen && !loading && courses.length === 0 && !error ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-          No courses found for this year and calendar semester in the demo catalog.
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+          {error}
         </p>
       ) : null}
 
-      {semesterChosen && !loading && courses.length > 0 ? (
-        <div className="max-h-[min(70vh,720px)] overflow-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      {termFromUrl && loading ? (
+        <p className="text-[13px] text-[#5a5a5a]">Loading your sections…</p>
+      ) : null}
+
+      {termFromUrl && !loading && sections.length === 0 && !error ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+          You have no section assignments in this term.
+        </p>
+      ) : null}
+
+      {termFromUrl && !loading && sections.length > 0 ? (
+        <div className="overflow-auto rounded-xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full text-left text-[13px]">
-            <thead className="sticky top-0 z-10 border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a] shadow-sm">
+            <thead className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
               <tr>
-                <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Title</th>
-                <th className="px-4 py-3">Year</th>
+                <th className="px-4 py-3">Course</th>
                 <th className="px-4 py-3">Section</th>
-                <th className="px-4 py-3 text-right">Students</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">Department</th>
+                <th className="px-4 py-3 text-right">Semester</th>
+                <th className="px-4 py-3 text-right">Credits</th>
+                <th className="px-4 py-3 text-right">Slots/wk</th>
+                <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
-              {courses.map((c) => (
-                <tr key={c.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-3 font-semibold text-[#1a1a1a]">{c.code}</td>
-                  <td className="px-4 py-3 text-[#333]">{c.title}</td>
-                  <td className="px-4 py-3 text-[#5a5a5a]">{c.academicYear}</td>
-                  <td className="px-4 py-3 text-[#5a5a5a]">{c.section ?? "—"}</td>
+              {sections.map((s) => (
+                <tr
+                  key={`${s.section_id}:${s.course_id}`}
+                  className="border-b border-gray-100 last:border-0"
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-[12.5px] font-semibold text-[#1f5b94]">
+                      {s.course_code}
+                    </div>
+                    <div className="mt-0.5 text-[12.5px] text-[#1f2f40]">
+                      {s.course_title}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-[#1f2f40]">
+                    {s.section_code}
+                  </td>
+                  <td className="px-4 py-3 text-[#3a3a3a]">
+                    {s.section_department}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {s.section_semester}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {s.course_credit_hours}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums text-[#5a5a5a]">
-                    {staticStudentCountForCourse(c.id)}
+                    {s.slot_count}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
-                      href={`/grades/enter?course=${encodeURIComponent(c.id)}&year=${encodeURIComponent(yearFromUrl!)}&semester=${encodeURIComponent(semesterFromUrl!)}`}
+                      href={`/grades/enter?section_id=${encodeURIComponent(s.section_id)}&course_id=${encodeURIComponent(s.course_id)}&term_id=${encodeURIComponent(s.term_id)}`}
                       className="font-semibold text-[#2f76b7] hover:underline"
                     >
                       Enter grades

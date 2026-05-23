@@ -1,0 +1,33 @@
+export default function AdminFooter() {
+  return (
+    <footer className="mt-12 bg-[linear-gradient(180deg,#4a8ac3_0%,#3f79b5_55%,#2f6699_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
+      <div className="mx-auto w-full max-w-[1024px] px-5 py-10">
+        <div className="flex flex-col items-center gap-8 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col items-center justify-center gap-2">
+            <div className="grid h-[54px] w-[54px] place-items-center rounded-full border-[2px] border-white/80">
+              <img src="/assets/logo.png" alt="AAU Emblem" className="h-[46px] w-[46px]" />
+            </div>
+            <div className="text-[12px] leading-tight text-white/90">
+              <div className="font-semibold">ADDIS ABABA UNIVERSITY</div>
+              <div className="text-[10px] text-white/70">All rights reserved.</div>
+            </div>
+          </div>
+
+          <div className="flex w-[320px] flex-col items-center justify-center text-white">
+            <div className="text-[16px] font-semibold">Department Head Portal</div>
+            <div className="mt-2 text-[12px] text-white/90">Grade Authorisation Dashboard</div>
+          </div>
+
+          <div className="flex w-[220px] flex-col items-center justify-center text-white">
+            <div className="text-[16px] font-semibold">Contact</div>
+            <div className="mt-2 text-[12px] text-white/90">registrar@aau.edu.et</div>
+          </div>
+        </div>
+
+        <div className="mt-8 text-center text-[10px] text-white/70">
+          © 2026 - Addis Ababa University. All Rights Reserved.
+        </div>
+      </div>
+    </footer>
+  );
+}

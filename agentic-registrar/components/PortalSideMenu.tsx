@@ -1,8 +1,38 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { clearStoredStudentAccessToken } from "@/lib/api";
 import { getFeatureHref } from "@/components/PortalMainNav";
 
 export default function PortalSideMenu() {
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  function handleLogout() {
+    clearStoredStudentAccessToken();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("aau-auth-changed"));
+    }
+    setMobileOpen(false);
+    router.replace("/");
+  }
+
+  function handleQuickClick(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    name: string,
+  ) {
+    if (name === "Logout") {
+      event.preventDefault();
+      handleLogout();
+      return;
+    }
+    if (getFeatureHref(name) === "#") {
+      event.preventDefault();
+    } else {
+      setMobileOpen(false);
+    }
+  }
   const nav = [
     {
       name: "Registration",
@@ -12,6 +42,12 @@ export default function PortalSideMenu() {
     },
     {
       name: "Grade & Results",
+      image: (
+        <svg className="svg-inline--fa fa-print fa-w-16" style={{color: "#3b7bbc", width: "14px", height: "14px"}} aria-hidden="true" focusable="false" data-prefix="fas" data-icon="print" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" data-fa-i2svg=""><path fill="currentColor" d="M448 192V77.25c0-8.49-3.37-16.62-9.37-22.63L393.37 9.37c-6-6-14.14-9.37-22.63-9.37H96C78.33 0 64 14.33 64 32v160c-35.35 0-64 28.65-64 64v112c0 8.84 7.16 16 16 16h48v96c0 17.67 14.33 32 32 32h320c17.67 0 32-14.33 32-32v-96h48c8.84 0 16-7.16 16-16V256c0-35.35-28.65-64-64-64zm-64 256H128v-96h256v96zm0-224H128V64h192v48c0 8.84 7.16 16 16 16h48v96zm48 72c-13.25 0-24-10.75-24-24 0-13.26 10.75-24 24-24s24 10.74 24 24c0 13.25-10.75 24-24 24z"></path></svg>
+      ),
+    },
+    {
+      name: "Registration Slip",
       image: (
         <svg className="svg-inline--fa fa-print fa-w-16" style={{color: "#3b7bbc", width: "14px", height: "14px"}} aria-hidden="true" focusable="false" data-prefix="fas" data-icon="print" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" data-fa-i2svg=""><path fill="currentColor" d="M448 192V77.25c0-8.49-3.37-16.62-9.37-22.63L393.37 9.37c-6-6-14.14-9.37-22.63-9.37H96C78.33 0 64 14.33 64 32v160c-35.35 0-64 28.65-64 64v112c0 8.84 7.16 16 16 16h48v96c0 17.67 14.33 32 32 32h320c17.67 0 32-14.33 32-32v-96h48c8.84 0 16-7.16 16-16V256c0-35.35-28.65-64-64-64zm-64 256H128v-96h256v96zm0-224H128V64h192v48c0 8.84 7.16 16 16 16h48v96zm48 72c-13.25 0-24-10.75-24-24 0-13.26 10.75-24 24-24s24 10.74 24 24c0 13.25-10.75 24-24 24z"></path></svg>
       ),
@@ -43,16 +79,127 @@ export default function PortalSideMenu() {
     {"name": "User Guide", "image": <svg className="svg-inline--fa fa-download fa-w-16" style={{color: "#3b7bbc", width: "14px", height: "14px"}} aria-hidden="true" focusable="false" data-prefix="fas" data-icon="download" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" data-fa-i2svg=""><path fill="currentColor" d="M216 0h80c13.3 0 24 10.7 24 24v168h87.7c17.8 0 26.7 21.5 14.1 34.1L269.7 378.3c-7.5 7.5-19.8 7.5-27.3 0L90.1 226.1c-12.6-12.6-3.7-34.1 14.1-34.1H192V24c0-13.3 10.7-24 24-24zm296 376v112c0 13.3-10.7 24-24 24H24c-13.3 0-24-10.7-24-24V376c0-13.3 10.7-24 24-24h146.7l49 49c20.1 20.1 52.5 20.1 72.6 0l49-49H488c13.3 0 24 10.7 24 24zm-124 88c0-11-9-20-20-20s-20 9-20 20 9 20 20 20 20-9 20-20zm64 0c0-11-9-20-20-20s-20 9-20 20 9 20 20 20 20-9 20-20z"></path></svg>},
     {"name": "Logout", "image": <svg className="svg-inline--fa fa-sign-out-alt fa-w-16" style={{ color: "#3b7bbc", width: "14px", height: "14px" }} aria-hidden="true" focusable="false" data-prefix="fas" data-icon="sign-out-alt" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" data-fa-i2svg=""><path fill="currentColor" d="M497 273L329 441c-15 15-41 4.5-41-17v-96H152c-13.3 0-24-10.7-24-24v-96c0-13.3 10.7-24 24-24h136V88c0-21.4 25.9-32 41-17l168 168c9.3 9.4 9.3 24.6 0 34zM192 436v-40c0-6.6-5.4-12-12-12H96c-17.7 0-32-14.3-32-32V160c0-17.7 14.3-32 32-32h84c6.6 0 12-5.4 12-12V76c0-6.6-5.4-12-12-12H96c-53 0-96 43-96 96v192c0 53 43 96 96 96h84c6.6 0 12-5.4 12-12z"></path></svg>}];
 
-  return (
-    <aside className="w-[255px] mx-[15px]">
-      <div className="rounded-t-sm bg-gradient-to-b from-[#71aee1] to-[#4b91cf] px-3 py-2 text-[14px] text-white">
+  const menuBody = (
+    <>
+      <div className="rounded-t-sm bg-gradient-to-b from-[#71aee1] to-[#4b91cf] px-3 py-2 text-[14px] font-semibold tracking-wide text-white shadow-[inset_0_-1px_0_rgba(15,23,42,0.08)]">
         Navigation
       </div>
-      <div className="overflow-hidden rounded-b-sm border border-[#c6d3de] bg-white">
+      <div className="overflow-hidden rounded-b-sm border border-[#c6d3de] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(31,91,148,0.18)]">
         {nav.map((item, idx) => (
           <div
             key={item.name}
-            className={`border-b border-[#DFF0D8] px-[15px] py-[8px] text-[14px] flex items-center gap-2 ${idx % 2 ? "bg-[#e9f2e3]" : "bg-white"}`}
+            className={`group border-b border-[#DFF0D8] px-[15px] py-[8px] text-[14px] flex items-center gap-2 transition-colors duration-150 hover:bg-[#dbe9f4]/60 ${idx % 2 ? "bg-[#e9f2e3]" : "bg-white"}`}
+          >
+            {item.image}
+            <a
+              href={getFeatureHref(item.name)}
+              onClick={(event) => {
+                if (getFeatureHref(item.name) === "#") event.preventDefault();
+                else setMobileOpen(false);
+              }}
+              className="cursor-pointer no-underline hover:no-underline"
+              style={{ fontWeight: 400 }}
+            >
+              {item.name}
+            </a>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2 rounded-t-sm bg-gradient-to-b from-[#71aee1] to-[#4b91cf] px-3 py-2 text-[14px] text-white">
+        Quick Links
+      </div>
+      <div className="overflow-hidden rounded-b-sm border border-[#c6d3de] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(31,91,148,0.18)]">
+        {quick.map((item, idx) => (
+          <div
+            key={item["name"]}
+            className={`group border-b border-[#DFF0D8] px-[15px] py-[8px] text-[14px] flex items-center gap-2 transition-colors duration-150 hover:bg-[#dbe9f4]/60 ${idx % 2 ? "bg-[#e9f2e3]" : "bg-white"}`}
+          >
+            {item["image"]}
+            <a
+              href={getFeatureHref(item["name"])}
+              onClick={(event) => handleQuickClick(event, item["name"])}
+              className="cursor-pointer no-underline hover:no-underline"
+              style={{ fontWeight: 400 }}
+            >
+              {item["name"]}
+            </a>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <div className="md:hidden mb-2 mx-3">
+        <button
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen(true)}
+          className="flex items-center gap-2 rounded border border-[#c6d3de] bg-white px-3 py-2 text-[14px] font-semibold text-[#1f1f1f] shadow-sm"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+          Navigation
+        </button>
+      </div>
+
+      {mobileOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
+
+      <div
+        className={`fixed left-0 top-0 z-50 h-full w-[280px] max-w-[85vw] transform overflow-y-auto bg-[#f5f8fb] p-3 shadow-xl transition-transform duration-300 ease-out md:hidden ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[15px] font-semibold text-[#1f1f1f]">Navigation</span>
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setMobileOpen(false)}
+            className="grid h-9 w-9 place-items-center rounded text-[#1f1f1f] hover:bg-black/5"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M6 6l12 12M6 18L18 6" />
+            </svg>
+          </button>
+        </div>
+        {menuBody}
+      </div>
+
+      <aside className="hidden md:block w-[255px] mx-[15px]">
+      <div className="rounded-t-sm bg-gradient-to-b from-[#71aee1] to-[#4b91cf] px-3 py-2 text-[14px] font-semibold tracking-wide text-white shadow-[inset_0_-1px_0_rgba(15,23,42,0.08)]">
+        Navigation
+      </div>
+      <div className="overflow-hidden rounded-b-sm border border-[#c6d3de] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(31,91,148,0.18)]">
+        {nav.map((item, idx) => (
+          <div
+            key={item.name}
+            className={`group border-b border-[#DFF0D8] px-[15px] py-[8px] text-[14px] flex items-center gap-2 transition-colors duration-150 hover:bg-[#dbe9f4]/60 ${idx % 2 ? "bg-[#e9f2e3]" : "bg-white"}`}
           >
             {item.image}
             <a
@@ -72,18 +219,16 @@ export default function PortalSideMenu() {
       <div className="mt-2 rounded-t-sm bg-gradient-to-b from-[#71aee1] to-[#4b91cf] px-3 py-2 text-[14px] text-white">
         Quick Links
       </div>
-      <div className="overflow-hidden rounded-b-sm border border-[#c6d3de] bg-white">
+      <div className="overflow-hidden rounded-b-sm border border-[#c6d3de] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(31,91,148,0.18)]">
         {quick.map((item, idx) => (
           <div
             key={item["name"]}
-            className={`border-b border-[#DFF0D8] px-[15px] py-[8px] text-[14px] flex items-center gap-2 ${idx % 2 ? "bg-[#e9f2e3]" : "bg-white"}`}
+            className={`group border-b border-[#DFF0D8] px-[15px] py-[8px] text-[14px] flex items-center gap-2 transition-colors duration-150 hover:bg-[#dbe9f4]/60 ${idx % 2 ? "bg-[#e9f2e3]" : "bg-white"}`}
           >
             {item["image"]}
             <a
               href={getFeatureHref(item["name"])}
-              onClick={(event) => {
-                if (getFeatureHref(item["name"]) === "#") event.preventDefault();
-              }}
+              onClick={(event) => handleQuickClick(event, item["name"])}
               className="cursor-pointer no-underline hover:no-underline"
               style={{ fontWeight: 400 }}
             >
@@ -93,5 +238,6 @@ export default function PortalSideMenu() {
         ))}
       </div>
     </aside>
+    </>
   );
 }

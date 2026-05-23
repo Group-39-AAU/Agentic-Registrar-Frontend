@@ -4,6 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
+import PortalTopStrip from "@/components/PortalTopStrip";
+import { fetchStudentMe, type StudentMeResponse } from "@/lib/api";
+
+const ROMAN_YEAR = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+
+function semesterToYear(currentSemester: number): string {
+  if (!currentSemester || currentSemester < 1) return "";
+  const year = Math.ceil(currentSemester / 2);
+  return ROMAN_YEAR[year - 1] ?? String(year);
+}
 
 const IMPLEMENTED_LINKS = new Set([
   "Basic Information",
@@ -25,26 +35,7 @@ function getFeatureHref(name: string) {
   return `/portal/feature-preview?name=${encodeURIComponent(name)}`;
 }
 
-function TopStrip() {
-  return (
-    <div className="border-b border-[#b8c7d5] bg-[linear-gradient(90deg,#eef4f8_0%,#d8e8f5_100%)] py-1">
-      <div className="mx-[70px] flex h-[96px] max-w-[1200px] items-center px-6">
-        <a href="http://localhost:3000/portal/home">
-          <img src="/assets/logo.png" alt="AAU" className="h-[100px] w-[100px]" />
-        </a>
-        <div className="ml-4">
-          <p className="text-[25px] leading-none text-[#cf2e2e]">ADDIS ABABA UNIVERSITY</p>
-          <p className="mt-1 ml-12 text-[20px] font-bold leading-none text-[#cf2e2e]">
-            አዲስ አበባ ዩኒቨርሲቲ
-          </p>
-          <p className="mt-1 ml-32 text-[16px] text-[#4a5a6a]">
-            Seek wisdom, Elevate Your Intellect and Serve Humanity
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// TopStrip moved to shared component PortalTopStrip.
 
 /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
 function MainNav() {
@@ -339,41 +330,55 @@ function SideMenu() {
 }
 
 export default function PortalHomePage() {
+  const [profile, setProfile] = useState<StudentMeResponse | null>(null);
+
   useEffect(() => {
-    document.title = "Portal Home | Addis Ababa University";
+    let cancelled = false;
+    fetchStudentMe()
+      .then((data) => {
+        if (!cancelled) setProfile(data);
+      })
+      .catch(() => {
+        // Keep placeholder values if the request fails.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const yearLabel = profile ? semesterToYear(profile.current_semester) : "";
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f2f4f6] font-[Arial,Helvetica,sans-serif] text-[#1a1a1a]">
-      <TopStrip />
+      <PortalTopStrip />
       <PortalMainNav />
 
       <main className="flex-1 py-[8px]">
-        <div className="flex gap-5">
+        <div className="flex flex-col gap-5 md:flex-row">
           <PortalSideMenu />
 
-          <section className="flex-1 ml-6">
-            <div className="rounded-sm border border-[#c7d4df] bg-white max-w-[995px] pb-[60px]" >
-              <div className="rounded-t-sm bg-gradient-to-b from-[#71aee1] to-[#458dcc] px-4 py-2 text-[14px] text-white">
+          <section className="flex-1 px-3 md:ml-6 md:px-0">
+            <div className="aau-card overflow-hidden rounded-[6px] border border-[#c7d4df] bg-white md:max-w-[995px] pb-[60px]" >
+              <div className="bg-gradient-to-b from-[#71aee1] to-[#458dcc] px-4 py-2 text-[14px] font-semibold tracking-wide text-white shadow-[inset_0_-1px_0_rgba(15,23,42,0.12)]">
                 My Profile
               </div>
-              <div className="flex justify-between items-start px-4 py-6">
-                <div className="space-y-10 text-[16px] flex-2 max-w-[370px]">
+              <div className="flex flex-col gap-6 px-4 py-6 md:flex-row md:items-start md:justify-between md:gap-0">
+                <div className="space-y-6 md:space-y-10 text-[16px] flex-2 md:max-w-[370px]">
                   <p className="flex items-start">
                     <span className="w-[120px] shrink-0 font-semibold">Full Name</span>
-                    <span>EPHREM MAMO TORA</span>
+                    <span>{profile?.full_name ?? "—"}</span>
                   </p>
                   <p className="flex items-start">
                     <span className="w-[120px] shrink-0 font-semibold">ID No.</span>
-                    <span>UGR/1504/14</span>
+                    <span>{profile?.student_id ?? "—"}</span>
                   </p>
                   <p className="flex items-start">
                     <span className="w-[120px] shrink-0 font-semibold">Department</span>
-                    <span className="max-w-[470px]">School of information technology and Engineering 2024</span>
+                    <span className="max-w-[470px]">{profile?.department ?? "—"}</span>
                   </p>
                   <p className="flex items-start">
                     <span className="w-[120px] shrink-0 font-semibold">Year</span>
-                    <span>Year V</span>
+                    <span>{yearLabel ? `Year ${yearLabel}` : "—"}</span>
                   </p>
                   <p className="flex items-start">
                     <span className="w-[120px] shrink-0 font-semibold">Section</span>
@@ -381,18 +386,21 @@ export default function PortalHomePage() {
                   </p>
                 </div>
                 <div className="flex-2 flex justify-center">
-                  <img
-                    src="https://portal.aau.edu.et/Images/DefaultPhoto.png"
-                    alt="Profile"
-                    style={{width: "180px", height:"150px"}}
-                  />
+                  <div className="rounded-md p-[3px] shadow-[0_1px_2px_rgba(15,23,42,0.06),0_10px_24px_-14px_rgba(31,91,148,0.35)] ring-1 ring-[#dde6ef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f6fa_100%)]">
+                    <img
+                      src="https://portal.aau.edu.et/Images/DefaultPhoto.png"
+                      alt="Profile"
+                      className="block rounded-[4px]"
+                      style={{width: "180px", height:"150px"}}
+                    />
                   </div>
+                </div>
                
                 <div className="flex-1"></div>
               </div>
             </div>
 
-            <div className="mt-4 border border-[#bcd7e4] bg-[#d9f0f7] px-4 py-3 text-[13px] text-[#274a5e]">
+            <div className="mt-4 rounded-md border border-[#bcd7e4] bg-[linear-gradient(180deg,#e3f3f9_0%,#d2ecf5_100%)] px-4 py-3 text-[13px] leading-relaxed text-[#274a5e] shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_-16px_rgba(31,91,148,0.18)]">
               <p>Dear Undergraduate self-sponsored students,</p>
               <p>
                 Please be informed that the second installment payment for the second semester is due

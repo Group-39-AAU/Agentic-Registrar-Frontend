@@ -34,7 +34,7 @@ function InputWithIcon({
         onChange={onChange}
         placeholder={placeholder}
         autoComplete={autoComplete}
-        className="w-full rounded-md border border-[#9bb0cc] bg-[#eef4ff] py-2 pl-10 pr-3 text-[12px] text-[#2a2a2a] outline-none focus:border-[#2f76b7] focus:ring-1 focus:ring-[#2f76b7]/40"
+        className="w-full rounded-md border border-[#9bb0cc] bg-[linear-gradient(180deg,#f3f7ff_0%,#eef4ff_100%)] py-2.5 pl-10 pr-3 text-[12px] text-[#2a2a2a] outline-none transition-all duration-150 hover:border-[#7a98bf] focus:border-[#2f76b7] focus:bg-white focus:ring-2 focus:ring-[#2f76b7]/25"
       />
     </div>
   );
@@ -71,7 +71,7 @@ export default function AdmissionLoginForm() {
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white px-8 py-8 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+    <div className="overflow-hidden rounded-xl border border-black/[0.06] bg-[linear-gradient(180deg,#ffffff_0%,#fbfcfd_100%)] px-8 py-8 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.06),0_24px_48px_-24px_rgba(31,91,148,0.32)]">
       <div className="text-[18px] font-semibold text-[#2a66a7]">
         Applicant login
       </div>
@@ -156,7 +156,7 @@ export default function AdmissionLoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="h-[42px] rounded-md bg-[#3f79b5] text-[16px] font-semibold text-white transition-colors hover:bg-[#356e9f] disabled:opacity-60"
+          className="h-[44px] rounded-md bg-[linear-gradient(180deg,#4a8ac3_0%,#3f79b5_55%,#356e9f_100%)] text-[16px] font-semibold tracking-wide text-white shadow-[0_1px_0_rgba(255,255,255,0.22)_inset,0_10px_22px_-10px_rgba(31,91,148,0.7)] transition-all duration-200 enabled:hover:-translate-y-[1px] enabled:hover:bg-[linear-gradient(180deg,#3f79b5_0%,#356e9f_100%)] enabled:hover:shadow-[0_2px_0_rgba(255,255,255,0.24)_inset,0_16px_28px_-12px_rgba(31,91,148,0.85)] disabled:opacity-60 disabled:shadow-none"
         >
           {loading ? "Signing in…" : "Login"}
         </button>

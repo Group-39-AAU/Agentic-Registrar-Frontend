@@ -151,7 +151,7 @@ export default function EnrollmentPage() {
               "POST"
             )
           }
-          className="h-[36px] rounded-md bg-[#3f79b5] px-4 text-[13px] font-semibold text-white hover:bg-[#356e9f] disabled:opacity-60"
+          className="aau-button-primary inline-flex h-[38px] items-center rounded-md px-4 text-[13px] font-semibold tracking-wide text-white"
         >
           Run Final Enrollment
         </button>
@@ -165,7 +165,7 @@ export default function EnrollmentPage() {
               "GET"
             )
           }
-          className="h-[36px] rounded-md border border-[#9bb0cc] bg-white px-4 text-[13px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
+          className="aau-button-secondary inline-flex h-[38px] items-center rounded-md px-4 text-[13px] font-semibold tracking-wide text-[#2f76b7] disabled:opacity-60"
         >
           List Enrollments
         </button>

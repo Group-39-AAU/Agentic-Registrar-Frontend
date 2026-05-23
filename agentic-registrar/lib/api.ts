@@ -6,6 +6,7 @@ const API_BASE =
     : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
 
 export const AUTH_TOKEN_KEY = "aau_registrar_access_token";
+export const STUDENT_AUTH_TOKEN_KEY = "aau_registrar_student_access_token";
 
 export function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -32,6 +33,21 @@ export function storeAuthFromResponse(data: unknown): void {
 export function clearStoredAccessToken(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function getStoredStudentAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(STUDENT_AUTH_TOKEN_KEY);
+}
+
+export function setStudentAccessToken(token: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STUDENT_AUTH_TOKEN_KEY, token);
+}
+
+export function clearStoredStudentAccessToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STUDENT_AUTH_TOKEN_KEY);
 }
 
 export class ApiError extends Error {
@@ -121,6 +137,571 @@ export async function loginUser(body: LoginRequest): Promise<LoginResponse> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data);
   return data as LoginResponse;
+}
+
+export type StudentMeResponse = {
+  student_id: string;
+  full_name: string;
+  email: string;
+  department: string;
+  current_semester: number;
+  sponsorship_type: string;
+  enrollment_status: string;
+  current_term?: {
+    term_id: string;
+    term_name: string;
+    start_date: string;
+    end_date: string;
+    registration_status: string;
+    section?: {
+      section_id: string;
+      section_code: string;
+      capacity: number;
+      enrolled_count: number;
+    };
+  };
+};
+
+export type CourseTerm = {
+  id: string;
+  term_name: string;
+  phase: string;
+  start_date: string;
+  end_date: string;
+  is_open: boolean;
+  description?: string;
+};
+
+export type AvailableCourseItem = {
+  id: string;
+  code: string;
+  title: string;
+  credit_hours: number;
+  semester: number;
+  department: string;
+};
+
+export type AvailableCoursesResponse = {
+  term: CourseTerm;
+  is_registered: boolean;
+  registration_id?: string | null;
+  registration_status?: string;
+  courses: AvailableCourseItem[];
+};
+
+/** GET /api/v1/courses/terms — requires student Bearer token. */
+export async function fetchCourseTerms(): Promise<CourseTerm[]> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/terms`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return Array.isArray(data) ? (data as CourseTerm[]) : [];
+}
+
+/** POST /api/v1/courses/me/available-courses — requires student Bearer token. */
+export async function fetchAvailableCourses(
+  termId: string
+): Promise<AvailableCoursesResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me/available-courses`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ term_id: termId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  console.log(data)
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as AvailableCoursesResponse;
+}
+
+export type AdvisoryRecommendedCourse = {
+  course_code: string;
+  title: string;
+  credit_hours: number;
+  is_core: boolean;
+  reason: string;
+  requires_override: boolean;
+};
+
+export type AdvisoryGraduationImpact = {
+  semesters_remaining: number;
+  on_track: boolean;
+  expected_graduation_semester: number;
+  delay_semesters: number;
+  critical_path_courses: string[];
+};
+
+export type AdvisoryRecommendation = {
+  recommendation_id: string;
+  student_id: string;
+  term_id: string;
+  mode: string;
+  verdict: string;
+  risk_status: "LOW" | "MEDIUM" | "HIGH" | string;
+  narrative: string;
+  recommended_courses: AdvisoryRecommendedCourse[];
+  warnings: string[];
+  graduation_impact: AdvisoryGraduationImpact;
+  filtered_recommendations: string[];
+  created_at: string;
+};
+
+export type RegistrationCourseInner = {
+  code: string;
+  title: string;
+  credit_hours: number;
+  semester?: number;
+  department?: string;
+};
+
+export type RegistrationCourseRead = {
+  /** Registration entry id (NOT the course id). */
+  id: string;
+  /** Course id — use this for add/drop consult/submit bodies. */
+  course_id: string;
+  section_id: string | null;
+  is_dropped: boolean;
+  /** A drop request is queued but not yet finalized. */
+  pending_drop?: boolean;
+  /** An add (re-add) request is queued but not yet finalized. */
+  pending_add?: boolean;
+  course: RegistrationCourseInner;
+};
+
+/** Catalog course the student can ADD for the first time (no
+ *  RegistrationCourse row exists yet). Returned in
+ *  AddDropPickerResponse.catalog_courses. Same `course` payload as
+ *  RegistrationCourseRead so the UI can render both with one row
+ *  component; `course_id` is what `/add-drop/batches` expects. */
+export type CatalogAddableRead = {
+  course_id: string;
+  pending_add?: boolean;
+  course: RegistrationCourseInner;
+};
+
+export type AddDropPickerResponse = {
+  registration_id: string;
+  term_id: string;
+  term_name: string;
+  registration_status: string;
+  active_courses: RegistrationCourseRead[];
+  dropped_courses: RegistrationCourseRead[];
+  /** Department-matching catalog rows the student has neither
+   *  registered for nor already passed — first-time ADD candidates,
+   *  spanning past / current / future curriculum semesters. */
+  catalog_courses: CatalogAddableRead[];
+};
+
+export type AddDropAction = "ADD" | "DROP";
+
+export type AddDropItem = {
+  course_id: string;
+  action: AddDropAction;
+};
+
+export type AddDropBatchBody = {
+  registration_id: string;
+  items: AddDropItem[];
+};
+
+/** POST /api/v1/courses/add-drop/batches */
+export async function submitAddDropBatch(
+  body: AddDropBatchBody
+): Promise<unknown> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/add-drop/batches`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+/** GET /api/v1/courses/me/add-drop/picker
+ *  Returns the student's active registration with two lists:
+ *    - active_courses  → drop candidates
+ *    - dropped_courses → add candidates
+ *  404 when the student has no REGISTERED / ADD_DROP_WINDOW registration.
+ */
+export async function fetchAddDropPicker(): Promise<AddDropPickerResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me/add-drop/picker`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as AddDropPickerResponse;
+}
+
+export type AddDropConsultBody = {
+  add_course_ids?: string[];
+  drop_course_ids?: string[];
+};    
+
+/** POST /api/v1/courses/advisory/consult/add-drop
+ *  Body empty → proactive (agent suggests adds/drops).
+ *  Body with one or both lists → guided (agent evaluates the hypothetical).
+ */
+export async function consultAddDrop(
+  body: AddDropConsultBody = {}
+): Promise<AdvisoryRecommendation> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const payload: AddDropConsultBody = {};
+  if (body.add_course_ids && body.add_course_ids.length > 0) {
+    payload.add_course_ids = body.add_course_ids;
+  }
+  if (body.drop_course_ids && body.drop_course_ids.length > 0) {
+    payload.drop_course_ids = body.drop_course_ids;
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/advisory/consult/add-drop`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as AdvisoryRecommendation;
+}
+
+/** POST /api/v1/courses/advisory/consult/pre-registration */
+export async function consultPreRegistration(
+  termId: string
+): Promise<AdvisoryRecommendation> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/advisory/consult/pre-registration`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ term_id: termId }),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  console.log(data);
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as AdvisoryRecommendation;
+}
+
+export type ScheduleSlot = {
+  course_code: string;
+  course_title: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  instructor_id?: string;
+  room?: string;
+  course_id?: string;
+  source?: string;
+  source_section_id?: string;
+};
+
+export type SchedulePendingAddition = {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+};
+
+export type ScheduleSection = {
+  section_id: string;
+  section_code: string;
+  department: string;
+  semester: number;
+  capacity: number;
+  enrolled_count: number;
+};
+
+export type MyScheduleResponse = {
+  term_id: string;
+  student_id: string;
+  section: ScheduleSection;
+  slots: ScheduleSlot[];
+  pending_additions: SchedulePendingAddition[];
+};
+
+/** GET /api/v1/courses/me/schedule?term_id=... */
+export async function fetchMySchedule(
+  termId: string
+): Promise<MyScheduleResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/me/schedule?term_id=${encodeURIComponent(termId)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as MyScheduleResponse;
+}
+
+// ── Schedule re-allocation on add/drop ──────────────────────────
+// After an officer applies an ADD, the course lands on the
+// registration with no timetable slots and shows under
+// pending_additions. The student picks a non-conflicting section
+// via these two endpoints.
+
+/** One weekly meeting in a candidate section. */
+export type ScheduleSlotSummary = {
+  slot_id: string;
+  course_code: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  room?: string;
+  instructor_id?: string;
+};
+
+/** A candidate slot that collides with a slot already on the schedule. */
+export type ScheduleConflictDetail = {
+  candidate: ScheduleSlotSummary;
+  collides_with: ScheduleSlotSummary;
+};
+
+/** A section the student could pick for an added course. */
+export type ScheduleSectionOption = {
+  section_id: string;
+  section_code: string;
+  department: string;
+  semester: number;
+  slots: ScheduleSlotSummary[];
+  conflicts: ScheduleConflictDetail[];
+  /** false when any candidate slot collides with the current schedule. */
+  is_viable: boolean;
+};
+
+export type ScheduleOptionsCourse = {
+  course_id: string;
+  course_code?: string;
+  course_title?: string;
+};
+
+export type ScheduleOptionsResponse = {
+  registration_id: string;
+  course: ScheduleOptionsCourse;
+  options: ScheduleSectionOption[];
+};
+
+export type ScheduleAcceptResponse = {
+  registration_id: string;
+  course_id: string;
+  section_id: string;
+  slots_created: number;
+};
+
+/** GET /api/v1/courses/me/schedule/options-for/{course_id}
+ *  Pass the term the student is viewing so options resolve against
+ *  the right registration when more than one term is open. */
+export async function fetchScheduleOptionsForCourse(
+  courseId: string,
+  termId?: string
+): Promise<ScheduleOptionsResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const qs = termId ? `?term_id=${encodeURIComponent(termId)}` : "";
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/me/schedule/options-for/${encodeURIComponent(courseId)}${qs}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as ScheduleOptionsResponse;
+}
+
+/** POST /api/v1/courses/me/schedule/accept-for/{course_id}
+ *  `termId` must match the term used when options were fetched. */
+export async function acceptSectionForCourse(
+  courseId: string,
+  sectionId: string,
+  termId?: string
+): Promise<ScheduleAcceptResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const body: { section_id: string; term_id?: string } = { section_id: sectionId };
+  if (termId) body.term_id = termId;
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/me/schedule/accept-for/${encodeURIComponent(courseId)}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as ScheduleAcceptResponse;
+}
+
+export type RegistrationInvoiceLine = {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+  line_total: number;
+};
+
+export type RegistrationInvoice = {
+  registration_id: string;
+  sponsorship_type: string;
+  currency: string;
+  fee_per_credit_hour: number;
+  lines: RegistrationInvoiceLine[];
+  total_credit_hours: number;
+  gross_total: number;
+  amount_due: number;
+  is_government_sponsored: boolean;
+  payment_required: boolean;
+  note?: string;
+};
+
+export type RegistrationPaymentInitiateResponse = {
+  registration_id: string;
+  payment_reference: string;
+  payment_url: string;
+};
+
+/** GET /api/v1/courses/registrations/{registration_id}/invoice */
+export async function fetchRegistrationInvoice(
+  registrationId: string
+): Promise<RegistrationInvoice> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/registrations/${encodeURIComponent(registrationId)}/invoice`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as RegistrationInvoice;
+}
+
+/** POST /api/v1/courses/registrations/{registration_id}/payment/initiate */
+export async function initiateRegistrationPayment(
+  registrationId: string
+): Promise<RegistrationPaymentInitiateResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/registrations/${encodeURIComponent(registrationId)}/payment/initiate`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as RegistrationPaymentInitiateResponse;
+}
+
+/** POST /api/v1/courses/registrations/{registration_id}/payment/callback */
+export async function callbackRegistrationPayment(
+  registrationId: string,
+  body: { payment_reference: string }
+): Promise<unknown> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/registrations/${encodeURIComponent(registrationId)}/payment/callback`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+/** POST /api/v1/courses/me/register — submit selected courses for a term. */
+export async function registerForCourses(
+  termId: string,
+  courseIds: string[]
+): Promise<unknown> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me/register`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ term_id: termId, course_ids: courseIds }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
+/** GET /api/v1/courses/me — requires student Bearer token. */
+export async function fetchStudentMe(): Promise<StudentMeResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(`${API_BASE}/api/v1/courses/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  console.log(data)
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as StudentMeResponse;
 }
 
 export type UndergraduateApplicationRecord = {
@@ -481,4 +1062,236 @@ export async function fetchTerms(): Promise<admissionTerm[]> {
       return { id, term_name } satisfies admissionTerm;
     })
     .filter((t): t is admissionTerm => t !== null);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Grading (Track B) — student transcript
+// ══════════════════════════════════════════════════════════════
+
+export type GradeLetter =
+  | "A_PLUS" | "A" | "A_MINUS"
+  | "B_PLUS" | "B" | "B_MINUS"
+  | "C_PLUS" | "C" | "C_MINUS"
+  | "D" | "F"
+  | "I" | "W" | "NG";
+
+export type TranscriptComponentScore = {
+  name: string;
+  weight: number;
+  max_score: number;
+  score: number | null;
+  weighted_contribution: number | null;
+};
+
+export type TranscriptCourseEntry = {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+  letter_grade: GradeLetter;
+  numeric_score: number | null;
+  grade_points: number | null;
+  has_breakdown: boolean;
+  components: TranscriptComponentScore[];
+};
+
+export type AcademicStatusType =
+  | "PROMOTED"
+  | "WARNING"
+  | "DISTINCTION"
+  | "DISMISSED"
+  | "INCOMPLETE";
+
+export type TranscriptTermEntry = {
+  term_id: string;
+  term_name: string;
+  term_phase: string;
+  term_start_date: string;
+  term_end_date: string;
+  courses: TranscriptCourseEntry[];
+  term_gpa: number | null;
+  total_credit_hours: number;
+  /** Track C — null until the department head authorises the term's standing. */
+  academic_status: AcademicStatusType | null;
+  academic_status_authorised_at: string | null;
+};
+
+export type TranscriptResponse = {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  terms: TranscriptTermEntry[];
+  cgpa: number | null;
+  total_credit_hours_completed: number;
+};
+
+/** GET /api/v1/courses/grading/me/transcript — student transcript across every term. */
+export async function fetchMyTranscript(): Promise<TranscriptResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) throw new ApiError(401, { detail: "Not authenticated" });
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/grading/me/transcript`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as TranscriptResponse;
+}
+
+/** GET /api/v1/courses/grading/me/terms/{term_id}/grades — one-term view. */
+export async function fetchMyTermGrades(
+  termId: string,
+): Promise<TranscriptTermEntry> {
+  const token = getStoredStudentAccessToken();
+  if (!token) throw new ApiError(401, { detail: "Not authenticated" });
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/grading/me/terms/${encodeURIComponent(termId)}/grades`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as TranscriptTermEntry;
+}
+
+// ── Track C: academic standing (student) ─────────────────────────
+
+export type StudentStandingTerm = {
+  id: string;
+  term_id: string;
+  term_name: string;
+  term_phase: string;
+  term_start_date: string;
+  term_end_date: string;
+  status: AcademicStatusType;
+  sgpa: number | null;
+  cgpa: number | null;
+  term_credit_hours: number;
+  cumulative_credit_hours: number;
+  f_count_term: number;
+  authorised_at: string | null;
+  explanation: string | null;
+};
+
+export type StudentStandingResponse = {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  current_status: AcademicStatusType | null;
+  terms: StudentStandingTerm[];
+};
+
+/** GET /api/v1/courses/standing/me — every authorised standing, newest-first. */
+export async function fetchMyStanding(): Promise<StudentStandingResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) throw new ApiError(401, { detail: "Not authenticated" });
+  const res = await fetch(`${API_BASE}/api/v1/courses/standing/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as StudentStandingResponse;
+}
+
+// ── Track C: official records (student) ──────────────────────────
+
+export type RecordStudentHeader = {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  department: string;
+  current_semester: number;
+};
+
+export type RecordTermHeader = {
+  term_id: string;
+  term_name: string;
+  term_phase: string;
+  term_start_date: string;
+  term_end_date: string;
+};
+
+export type GradeReportCourse = {
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+  letter_grade: GradeLetter;
+  numeric_score: number | null;
+  grade_points: number | null;
+};
+
+export type GradeReportResponse = {
+  document_id: string;
+  generated_at: string;
+  student: RecordStudentHeader;
+  term: RecordTermHeader;
+  courses: GradeReportCourse[];
+  term_gpa: number | null;
+  cumulative_gpa: number | null;
+  term_credit_hours: number;
+  cumulative_credit_hours: number;
+  academic_status: AcademicStatusType | null;
+  academic_status_authorised_at: string | null;
+  explanation: string | null;
+};
+
+export type FilingSlipCourse = {
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+  is_dropped: boolean;
+};
+
+export type FilingSlipResponse = {
+  document_id: string;
+  generated_at: string;
+  student: RecordStudentHeader;
+  term: RecordTermHeader;
+  registration_status: string;
+  sponsorship_type: string;
+  section_code: string | null;
+  courses: FilingSlipCourse[];
+  total_credit_hours: number;
+  payment_reference: string | null;
+  finalised_at: string | null;
+  last_authorised_status: AcademicStatusType | null;
+  last_authorised_term_name: string | null;
+};
+
+/** GET /api/v1/courses/records/me/grade-report?term_id= — past-term official record. */
+export async function fetchGradeReport(termId: string): Promise<GradeReportResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) throw new ApiError(401, { detail: "Not authenticated" });
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/records/me/grade-report?term_id=${encodeURIComponent(termId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as GradeReportResponse;
+}
+
+/** GET /api/v1/courses/records/me/filing-slip?term_id= — current/upcoming-term slip. */
+export async function fetchFilingSlip(termId: string): Promise<FilingSlipResponse> {
+  const token = getStoredStudentAccessToken();
+  if (!token) throw new ApiError(401, { detail: "Not authenticated" });
+  const res = await fetch(
+    `${API_BASE}/api/v1/courses/records/me/filing-slip?term_id=${encodeURIComponent(termId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as FilingSlipResponse;
+}
+
+/** Human-readable letter (UI helper — the enum uses underscores for + / -). */
+export function formatGradeLetter(letter: GradeLetter): string {
+  switch (letter) {
+    case "A_PLUS": return "A+";
+    case "A_MINUS": return "A-";
+    case "B_PLUS": return "B+";
+    case "B_MINUS": return "B-";
+    case "C_PLUS": return "C+";
+    case "C_MINUS": return "C-";
+    default: return letter;
+  }
 }
