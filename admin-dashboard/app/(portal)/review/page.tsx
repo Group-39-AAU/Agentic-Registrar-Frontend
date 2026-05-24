@@ -302,7 +302,7 @@ export default function ReviewPage() {
               ? "No students match this sponsorship filter."
               : allRows.length === 0 && aiDecisionFilter
                 ? "No students match the selected ranking recommendations filter."
-                : `No students with status "${STATUS_FILTER_LABELS[statusFilter]}".`}
+                : "No students awaiting review."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200">
