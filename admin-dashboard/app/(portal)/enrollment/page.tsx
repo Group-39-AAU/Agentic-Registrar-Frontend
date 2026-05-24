@@ -254,6 +254,7 @@ export default function EnrollmentPage() {
                 <table className="w-full min-w-[1400px] border-collapse text-left text-[13px]">
                   <thead>
                     <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                      <th className="px-4 py-3">Enrollment ID</th>
                       <th className="px-4 py-3">Student</th>
                       <th className="px-4 py-3">Department</th>
                       <th className="px-4 py-3">Enrollment term</th>
@@ -266,6 +267,9 @@ export default function EnrollmentPage() {
                         key={String(row.id ?? row.application_id ?? index)}
                         className="border-b border-gray-100"
                       >
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-[12.5px] font-semibold text-[#2f76b7]">
+                          {row.university_id ?? "—"}
+                        </td>
                         <td className="max-w-[220px] px-4 py-3 font-medium text-[#1a1a1a]">
                           {row.student_full_name ?? "—"}
                         </td>
