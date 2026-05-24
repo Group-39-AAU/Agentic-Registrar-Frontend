@@ -14,10 +14,12 @@ const ADMISSION_LINKS: NavLink[] = [
   { href: "/enrollment", label: "Enrollment" },
 ];
 
-const COURSE_MANAGEMENT_HREF = "/officer";
+// Section allocation + schedule generation moved to the Department-Head
+// dashboard; "Operations" is no longer linked here. The dropdown anchors
+// to /officer/terms so clicking the heading lands on a live page.
+const COURSE_MANAGEMENT_HREF = "/officer/terms";
 
 const COURSE_MANAGEMENT_LINKS: NavLink[] = [
-  { href: "/officer", label: "Operations" },
   { href: "/officer/terms", label: "Terms" },
   { href: "/officer/add-drop", label: "Add / Drop" },
   { href: "/officer/grading", label: "Grade Authorisation" },
@@ -74,7 +76,11 @@ export default function AdminTopBar() {
   const closeCourseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const admissionActive = ADMISSION_LINKS.some((l) => pathname.startsWith(l.href));
-  const courseManagementActive = pathname.startsWith(COURSE_MANAGEMENT_HREF);
+  // Light up the Course Management heading on any of its sub-routes,
+  // not just the dropdown's anchor (Terms).
+  const courseManagementActive = COURSE_MANAGEMENT_LINKS.some((l) =>
+    pathname.startsWith(l.href),
+  );
 
   // Close hover dropdown if we navigate away
   useEffect(() => {
