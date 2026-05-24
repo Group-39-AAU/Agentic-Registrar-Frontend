@@ -152,6 +152,7 @@ export default function AdmissionDetailClient({
   const [correctionAdmissionNumber, setCorrectionAdmissionNumber] = useState("");
   const [correctionFirstName, setCorrectionFirstName] = useState("");
   const [correctionLastName, setCorrectionLastName] = useState("");
+  const [correctionStream, setCorrectionStream] = useState<"NATURAL" | "SOCIAL" | "">("");
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [correctionSuccessModalOpen, setCorrectionSuccessModalOpen] = useState(false);
@@ -216,6 +217,11 @@ export default function AdmissionDetailClient({
     setCorrectionAdmissionNumber((prev) => prev || data.admission_number || "");
     setCorrectionFirstName((prev) => prev || data.applicant_first_name || "");
     setCorrectionLastName((prev) => prev || data.applicant_last_name || "");
+    setCorrectionStream((prev) => {
+      if (prev) return prev;
+      const s = (data.stream ?? "").toUpperCase();
+      return s === "NATURAL" || s === "SOCIAL" ? s : "";
+    });
   }, [data]);
 
   useEffect(() => {
@@ -283,9 +289,10 @@ export default function AdmissionDetailClient({
     const admissionNumber = correctionAdmissionNumber.trim();
     const firstName = correctionFirstName.trim();
     const lastName = correctionLastName.trim();
+    const stream = correctionStream;
 
-    if (!admissionNumber || !firstName || !lastName) {
-      setCorrectionError("Admission number, first name, and last name are all required.");
+    if (!admissionNumber || !firstName || !lastName || !stream) {
+      setCorrectionError("Admission number, first name, last name, and stream are all required.");
       return;
     }
 
@@ -296,6 +303,7 @@ export default function AdmissionDetailClient({
         admission_number: admissionNumber,
         first_name: firstName,
         last_name: lastName,
+        stream,
       });
       setCorrectionSuccessModalOpen(true);
       await reloadApplication();
@@ -504,7 +512,7 @@ export default function AdmissionDetailClient({
             </p>
           </div>
           <div className="space-y-4 px-8 py-6">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="correction-admission-number" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
                   Admission Number
@@ -516,6 +524,22 @@ export default function AdmissionDetailClient({
                   required
                   className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
                 />
+              </div>
+              <div>
+                <label htmlFor="correction-stream" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
+                  Stream
+                </label>
+                <select
+                  id="correction-stream"
+                  value={correctionStream}
+                  onChange={(e) => setCorrectionStream(e.target.value as "NATURAL" | "SOCIAL" | "")}
+                  required
+                  className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
+                >
+                  <option value="" disabled>Select stream</option>
+                  <option value="NATURAL">Natural</option>
+                  <option value="SOCIAL">Social</option>
+                </select>
               </div>
               <div>
                 <label htmlFor="correction-first-name" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">

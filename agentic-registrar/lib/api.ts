@@ -1004,6 +1004,7 @@ export type SubmitCorrectionsBody = {
   admission_number: string;
   first_name: string;
   last_name: string;
+  stream: "NATURAL" | "SOCIAL";
 };
 
 /** POST /api/v1/undergraduate/applications/{application_id}/payment/callback */
