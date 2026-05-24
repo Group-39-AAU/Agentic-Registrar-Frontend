@@ -270,7 +270,7 @@ export default function ReviewPage() {
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="ai-decision-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
-              AI recommended decision
+              Ranking recommendations
             </label>
             <select
               id="ai-decision-filter"
@@ -361,7 +361,7 @@ export default function ReviewPage() {
             {allRows.length > 0 && sponsorshipFilter !== "ALL"
               ? "No students match this sponsorship filter."
               : allRows.length === 0 && aiDecisionFilter
-                ? "No students match the selected AI recommended decision filter."
+                ? "No students match the selected ranking recommendations filter."
                 : `No students with status "${STATUS_FILTER_LABELS[statusFilter]}".`}
           </p>
         ) : (
@@ -386,7 +386,7 @@ export default function ReviewPage() {
                   <th className="px-4 py-3">Sponsorship</th>
                   <th className="px-4 py-3">Stream</th>
                   <th className="px-4 py-3">Department</th>
-                  <th className="min-w-[140px] px-4 py-3">AI Recommended Decision</th>
+                  <th className="min-w-[140px] px-4 py-3">Ranking Recommendations</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Score</th>
                   <th className="px-4 py-3">Action</th>
