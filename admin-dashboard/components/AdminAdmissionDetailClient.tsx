@@ -42,7 +42,8 @@ type ApplicationRecord = {
 
 type UatResult = {
   uat_id: string;
-  score: number;
+  score: number | null;
+  is_completed: boolean;
 };
 
 function termText(value: unknown): string {
@@ -412,19 +413,20 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
           ) : null}
           {!data.uat_id ? (
             <p className="mt-2 text-[13px] text-[#5a5a5a]">
-              The Applicant has not taken the UAT test yet.
+              UAT has not been scheduled for this applicant yet.
             </p>
           ) : uatResult ? (
-            <>
+            uatResult.is_completed && uatResult.score !== null ? (
               <DetailRow label="Score">
                 <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
                   {uatResult.score}
                 </span>
               </DetailRow>
-              <DetailRow label="Message">
-                <span className="text-[14px] text-[#1a1a1a]">UAT result is not available yet.</span>
-              </DetailRow>
-            </>
+            ) : (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">
+                UAT is scheduled but the applicant has not completed the test yet.
+              </p>
+            )
           ) : null}
         </div>
       </div>
