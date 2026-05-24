@@ -1,5 +1,6 @@
 "use client";
 
+import AdvisoryConsultPanel from "@/components/AdvisoryConsultPanel";
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
@@ -612,6 +613,11 @@ export default function RegisteredCoursesPage() {
       ) : null}
 
       <PortalFooter />
+
+      {/* Floating AI advisor — appears only once the student has a real
+          term context. Lets them ask "what should I take?" before they
+          actually submit the registration. */}
+      {termId ? <AdvisoryConsultPanel termId={termId} /> : null}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AdvisoryConsultPanel from "@/components/AdvisoryConsultPanel";
 import PortalFooter from "@/components/PortalFooter";
 import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
@@ -302,6 +303,11 @@ export default function CourseRegistrationPage() {
         </div>
       </main>
       <PortalFooter />
+
+      {/* Floating AI advisor — appears as soon as the student has
+          picked an academic year + calendar semester, so they can
+          consult before clicking through to course selection. */}
+      {selectedTerm ? <AdvisoryConsultPanel termId={selectedTerm.id} /> : null}
     </div>
   );
 }
