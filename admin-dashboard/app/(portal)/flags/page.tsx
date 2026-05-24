@@ -1,7 +1,8 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
-import { useEffect, useMemo, useState } from "react";
+import Pagination from "@/components/Pagination";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -169,32 +170,47 @@ export default function FlagsPage() {
   const [resolveState, setResolveState] = useState<RequestState<FlaggedApplication>>(initialState);
   const [action, setAction] = useState<Action>("APPROVE_AND_CONTINUE");
   const [resolutionNote, setResolutionNote] = useState("");
+  // Backend returns plain ``list[…]`` — no total. We track ``hasMore``
+  // by checking whether the current page returned a full window.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const selectedApplication = useMemo(
     () => (queue.data ?? []).find((row) => row.id === selectedApplicationId) ?? null,
     [queue.data, selectedApplicationId],
   );
 
-  const loadQueue = async () => {
-    setQueue({ loading: true, error: null, data: null });
-    try {
-      const payload = await requestApi("/api/v1/undergraduate/applications/flagged-queue", "GET");
-      const rows = Array.isArray(payload) ? (payload as FlaggedApplication[]) : [];
-      setQueue({ loading: false, error: null, data: rows });
-      setSelectedApplicationId((prev) => {
-        if (!rows.length) return "";
-        if (prev && rows.some((row) => row.id === prev)) return prev;
-        return rows[0].id;
-      });
-    } catch (error) {
-      setQueue({
-        loading: false,
-        error: error instanceof Error ? error.message : "Could not load flagged queue.",
-        data: null,
-      });
-      setSelectedApplicationId("");
-    }
-  };
+  const loadQueue = useCallback(
+    async (targetPage: number, targetPageSize: number) => {
+      setQueue({ loading: true, error: null, data: null });
+      try {
+        const offset = (targetPage - 1) * targetPageSize;
+        const params = new URLSearchParams({
+          limit: String(targetPageSize),
+          offset: String(offset),
+        });
+        const payload = await requestApi(
+          `/api/v1/undergraduate/applications/flagged-queue?${params.toString()}`,
+          "GET",
+        );
+        const rows = Array.isArray(payload) ? (payload as FlaggedApplication[]) : [];
+        setQueue({ loading: false, error: null, data: rows });
+        setSelectedApplicationId((prev) => {
+          if (!rows.length) return "";
+          if (prev && rows.some((row) => row.id === prev)) return prev;
+          return rows[0].id;
+        });
+      } catch (error) {
+        setQueue({
+          loading: false,
+          error: error instanceof Error ? error.message : "Could not load flagged queue.",
+          data: null,
+        });
+        setSelectedApplicationId("");
+      }
+    },
+    [],
+  );
 
   const loadFlagContext = async (applicationId: string) => {
     if (!applicationId) return;
@@ -236,7 +252,7 @@ export default function FlagsPage() {
       )) as FlaggedApplication;
       setResolveState({ loading: false, error: null, data: payload });
       setResolutionNote("");
-      await loadQueue();
+      await loadQueue(page, pageSize);
     } catch (error) {
       setResolveState({
         loading: false,
@@ -247,9 +263,9 @@ export default function FlagsPage() {
   };
 
   useEffect(() => {
-    void loadQueue();
+    void loadQueue(page, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page, pageSize]);
 
   useEffect(() => {
     if (!selectedApplicationId) return;
@@ -289,7 +305,7 @@ export default function FlagsPage() {
               </span>
               <button
                 type="button"
-                onClick={() => void loadQueue()}
+                onClick={() => void loadQueue(page, pageSize)}
                 disabled={queue.loading}
                 className="h-[34px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
               >
@@ -354,6 +370,21 @@ export default function FlagsPage() {
               })}
             </ul>
           )}
+          {queue.data && (queueRows.length > 0 || page > 1) ? (
+            <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                hasMore={queueRows.length === pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+                itemLabel="flagged applications"
+              />
+            </div>
+          ) : null}
         </Section>
 
         {/* Detail + Resolve */}

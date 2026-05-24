@@ -1,6 +1,7 @@
 "use client";
 
 import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
+import Pagination from "@/components/Pagination";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo } from "react";
 import { useState } from "react";
@@ -142,9 +143,24 @@ export default function ReviewPage() {
     );
   }, [allRows, sponsorshipFilter]);
 
+  // Client-side pagination over the merged self-sponsored + government
+  // rows. The backend doesn't paginate /review/students, so we slice
+  // locally; the count under the filters still reflects the full set.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setPage(1);
+  }, [sponsorshipFilter, aiDecisionFilter, allRows.length, pageSize]);
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
+
   const allIds = useMemo(
-    () => rows.map((row) => String(row.application_id ?? row.id ?? "")).filter(Boolean),
-    [rows]
+    () => pageRows.map((row) => String(row.application_id ?? row.id ?? "")).filter(Boolean),
+    [pageRows]
   );
 
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
@@ -305,7 +321,8 @@ export default function ReviewPage() {
                 : "No students awaiting review."}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[1180px] border-collapse text-left text-[13px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
@@ -333,7 +350,7 @@ export default function ReviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => {
+                {pageRows.map((row, index) => {
                   const id = String(row.application_id ?? row.id ?? "");
                   return (
                     <tr
@@ -404,6 +421,15 @@ export default function ReviewPage() {
                 })}
               </tbody>
             </table>
+            </div>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={rows.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="students"
+            />
           </div>
         )}
         <div className="mt-4">

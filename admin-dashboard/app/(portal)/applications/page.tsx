@@ -1,6 +1,7 @@
 "use client";
 
 import { JsonResult, RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
+import Pagination from "@/components/Pagination";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -74,6 +75,8 @@ export default function ApplicationsPage() {
   const [selectedTermId, setSelectedTermId] = useState("");
   const [termsLoading, setTermsLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,18 +128,29 @@ export default function ApplicationsPage() {
     };
   }, []);
 
+  // Reset to page 1 whenever the term or status filter changes —
+  // otherwise the old page index can point past the new result set.
+  useEffect(() => {
+    setPage(1);
+  }, [selectedTermId, statusFilter, pageSize]);
+
   useEffect(() => {
     if (!selectedTermId) {
       return;
     }
-    const params = new URLSearchParams({ term_id: selectedTermId });
+    const offset = (page - 1) * pageSize;
+    const params = new URLSearchParams({
+      term_id: selectedTermId,
+      limit: String(pageSize),
+      offset: String(offset),
+    });
     if (statusFilter) params.set("status", statusFilter);
     callApi(
       setApplications,
       `/api/v1/undergraduate/applications?${params.toString()}`,
       "GET",
     );
-  }, [selectedTermId, statusFilter]);
+  }, [selectedTermId, statusFilter, page, pageSize]);
 
   const rows = useMemo(() => {
     if (Array.isArray(applications.data)) return applications.data as AppRow[];
@@ -149,6 +163,17 @@ export default function ApplicationsPage() {
     }
     return [];
   }, [applications.data]);
+
+  const total = useMemo(() => {
+    if (
+      applications.data &&
+      typeof applications.data === "object" &&
+      typeof (applications.data as { total?: unknown }).total === "number"
+    ) {
+      return (applications.data as { total: number }).total;
+    }
+    return rows.length;
+  }, [applications.data, rows.length]);
 
   return (
     <Section
@@ -200,7 +225,7 @@ export default function ApplicationsPage() {
       </div>
 
       <p className="mb-3 text-[13px] text-[#5a5a5a]">
-        Total records: <span className="font-semibold text-[#2f76b7]">{rows.length}</span>
+        Total records: <span className="font-semibold text-[#2f76b7]">{total}</span>
         {statusFilter ? (
           <>
             {" "}
@@ -217,7 +242,8 @@ export default function ApplicationsPage() {
       ) : applications.error ? (
         <JsonResult state={applications} />
       ) : (
-        <div className="mb-4 overflow-x-auto rounded-lg border border-gray-200">
+        <div className="mb-4 overflow-hidden rounded-lg border border-gray-200">
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] border-collapse text-left text-[13px]">
             <thead>
               <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
@@ -277,6 +303,15 @@ export default function ApplicationsPage() {
               )}
             </tbody>
           </table>
+          </div>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="applications"
+          />
         </div>
       )}
     </Section>
