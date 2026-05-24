@@ -46,6 +46,14 @@ type UatResult = {
   is_completed: boolean;
 };
 
+type EnrollmentRecord = {
+  id: string;
+  application_id: string;
+  university_id: string;
+  department?: string | null;
+  enrollment_term?: string | null;
+};
+
 function termText(value: unknown): string {
   if (typeof value === "string") return value;
   if (value && typeof value === "object") {
@@ -140,6 +148,8 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
   const [uatLoading, setUatLoading] = useState(false);
   const [uatError, setUatError] = useState<string | null>(null);
   const [uatResult, setUatResult] = useState<UatResult | null>(null);
+  const [enrollment, setEnrollment] = useState<EnrollmentRecord | null>(null);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
 
   const handleCheckUat = async () => {
     if (!data?.uat_id) return;
@@ -175,6 +185,44 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.uat_id]);
+
+  // Once the application is ENROLLED, look up the enrollment row so officers
+  // can see the assigned university ID. 404 just means the row isn't ready yet.
+  useEffect(() => {
+    if (!data) return;
+    if ((data.current_status ?? "").toUpperCase() !== "ENROLLED") {
+      setEnrollment(null);
+      return;
+    }
+    let cancelled = false;
+    const token = localStorage.getItem("admin_dashboard_token");
+    setEnrollmentLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/undergraduate/enrollment/${encodeURIComponent(applicationId)}`,
+          token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+        );
+        if (res.status === 404) {
+          if (!cancelled) setEnrollment(null);
+          return;
+        }
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (!cancelled) setEnrollment(null);
+          return;
+        }
+        if (!cancelled) setEnrollment(payload as EnrollmentRecord);
+      } catch {
+        if (!cancelled) setEnrollment(null);
+      } finally {
+        if (!cancelled) setEnrollmentLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, data]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -430,6 +478,36 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
           ) : null}
         </div>
       </div>
+
+      {(data.current_status ?? "").toUpperCase() === "ENROLLED" ? (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
+            <h2 className="text-[15px] font-bold text-[#2a66a7]">Enrollment</h2>
+            <p className="mt-1 text-[12px] text-[#5a5a5a]">
+              University ID assigned after the applicant was enrolled.
+            </p>
+          </div>
+          <div className="px-8 py-4">
+            {enrollmentLoading ? (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">Loading enrollment…</p>
+            ) : enrollment ? (
+              <>
+                <DetailRow label="University ID">
+                  <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
+                    {enrollment.university_id}
+                  </span>
+                </DetailRow>
+                <DetailRow label="Department">{enrollment.department ?? "—"}</DetailRow>
+                <DetailRow label="Enrollment term">{enrollment.enrollment_term ?? "—"}</DetailRow>
+              </>
+            ) : (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">
+                Enrollment record is being prepared. Check back shortly.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {extra ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

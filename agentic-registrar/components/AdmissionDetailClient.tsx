@@ -7,11 +7,13 @@ import {
   ApiError,
   callbackApplicationPayment,
   clearStoredAccessToken,
+  fetchEnrollmentByApplicationId,
   fetchTestingCenterCallback,
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
   initiateApplicationPayment,
   submitApplicationCorrections,
+  type EnrollmentRecord,
   type PaymentInitiateResponse,
   type TestingCenterCallbackResponse,
   type UndergraduateApplicationRecord,
@@ -149,6 +151,8 @@ export default function AdmissionDetailClient({
   const [uatLoading, setUatLoading] = useState(false);
   const [uatError, setUatError] = useState<string | null>(null);
   const [uatResult, setUatResult] = useState<TestingCenterCallbackResponse | null>(null);
+  const [enrollment, setEnrollment] = useState<EnrollmentRecord | null>(null);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [correctionAdmissionNumber, setCorrectionAdmissionNumber] = useState("");
   const [correctionFirstName, setCorrectionFirstName] = useState("");
   const [correctionLastName, setCorrectionLastName] = useState("");
@@ -207,6 +211,32 @@ export default function AdmissionDetailClient({
     if (!paymentModalOpen || !paymentInit) return;
     setModalPaymentRef(paymentInit.payment_reference);
   }, [paymentModalOpen, paymentInit]);
+
+  // Fetch the enrollment record once the application reaches ENROLLED so we
+  // can show the student's university ID. The backend returns 404 until the
+  // enrollment row is created, which the helper normalizes to null.
+  useEffect(() => {
+    if (!data) return;
+    if ((data.current_status ?? "").toUpperCase() !== "ENROLLED") {
+      setEnrollment(null);
+      return;
+    }
+    let cancelled = false;
+    setEnrollmentLoading(true);
+    (async () => {
+      try {
+        const row = await fetchEnrollmentByApplicationId(applicationId);
+        if (!cancelled) setEnrollment(row);
+      } catch {
+        if (!cancelled) setEnrollment(null);
+      } finally {
+        if (!cancelled) setEnrollmentLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, data]);
 
   // Pre-fill the correction form with the applicant's current values
   // whenever the app loads in CHANGES_REQUESTED — but only seed each
@@ -655,6 +685,36 @@ export default function AdmissionDetailClient({
           ) : null}
         </div>
       </div>
+
+      {(data.current_status ?? "").toUpperCase() === "ENROLLED" ? (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
+            <h2 className="text-[15px] font-bold text-[#2a66a7]">Enrollment</h2>
+            <p className="mt-1 text-[12px] text-[#5a5a5a]">
+              You are enrolled. This is your university student ID.
+            </p>
+          </div>
+          <div className="px-8 py-4">
+            {enrollmentLoading ? (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">Loading enrollment…</p>
+            ) : enrollment ? (
+              <>
+                <DetailRow label="University ID">
+                  <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
+                    {enrollment.university_id}
+                  </span>
+                </DetailRow>
+                <DetailRow label="Department">{enrollment.department ?? "—"}</DetailRow>
+                <DetailRow label="Enrollment term">{enrollment.enrollment_term ?? "—"}</DetailRow>
+              </>
+            ) : (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">
+                Enrollment record is being prepared. Check back shortly.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {extra ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
