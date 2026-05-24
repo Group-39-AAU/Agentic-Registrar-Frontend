@@ -29,7 +29,7 @@ type ReviewDetail = {
   has_decision?: boolean;
 };
 
-type DecisionValue = "APPROVED" | "REJECTED";
+type DecisionValue = "ADMIT" | "REJECT" | "WAITLIST";
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -81,7 +81,7 @@ export default function AdminReviewDetailClient({ applicationId }: { application
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ReviewDetail | null>(null);
 
-  const [decision, setDecision] = useState<DecisionValue>("APPROVED");
+  const [decision, setDecision] = useState<DecisionValue>("ADMIT");
   const [remarks, setRemarks] = useState<string>("");
   const [decideLoading, setDecideLoading] = useState(false);
   const [decideError, setDecideError] = useState<string | null>(null);
@@ -263,7 +263,7 @@ export default function AdminReviewDetailClient({ applicationId }: { application
             <DetailRow label="2nd choice">{data.program_choice_2 ?? "—"}</DetailRow>
             <DetailRow label="3rd choice">{data.program_choice_3 ?? "—"}</DetailRow>
 
-            <DetailRow label="AI recommended decision">
+            <DetailRow label="Ranking recommendations">
               {data.ai_recommended_decision &&
               String(data.ai_recommended_decision).trim() !== "" &&
               data.ai_recommended_decision !== "string" ? (
