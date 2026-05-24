@@ -13,7 +13,6 @@ type EnrollmentRow = {
   university_id?: string;
   program_id?: string;
   department?: string;
-  section?: string;
   enrollment_term?: string;
   created_at?: string;
 };
@@ -229,7 +228,6 @@ export default function EnrollmentPage() {
                     <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
                       <th className="px-4 py-3">Student</th>
                       <th className="px-4 py-3">Department</th>
-                      <th className="px-4 py-3">Section</th>
                       <th className="px-4 py-3">Enrollment term</th>
                       <th className="px-4 py-3">Created</th>
                     </tr>
@@ -244,7 +242,6 @@ export default function EnrollmentPage() {
                           {row.student_full_name ?? "—"}
                         </td>
                         <td className="max-w-[180px] px-4 py-3">{row.department ?? "—"}</td>
-                        <td className="px-4 py-3">{row.section ?? "—"}</td>
                         <td className="px-4 py-3">{row.enrollment_term ?? "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-[12px] text-[#5a5a5a]">
                           {row.created_at
