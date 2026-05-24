@@ -18,6 +18,7 @@ const COURSE_MANAGEMENT_HREF = "/officer";
 
 const COURSE_MANAGEMENT_LINKS: NavLink[] = [
   { href: "/officer", label: "Operations" },
+  { href: "/officer/terms", label: "Terms" },
   { href: "/officer/add-drop", label: "Add / Drop" },
   { href: "/officer/grading", label: "Grade Authorisation" },
   { href: "/officer/exceptions", label: "Exception Queue" },
