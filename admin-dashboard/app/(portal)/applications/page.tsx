@@ -22,6 +22,39 @@ type AdmissionTerm = {
   term_name: string;
 };
 
+/** Sent as optional `status` query param to GET /undergraduate/applications. */
+const STATUS_QUERY_VALUES = [
+  "SUBMITTED",
+  "PAYMENT_PENDING",
+  "PAYMENT_VERIFIED",
+  "UNDER_VERIFICATION",
+  "AI_PRE_SCREENING",
+  "UAT_PENDING",
+  "UAT_COMPLETED",
+  "FLAGGED_FOR_REVIEW",
+  "CHANGES_REQUESTED",
+  "PENDING_REVIEW",
+  "DECIDED",
+  "ENROLLED",
+] as const;
+
+type StatusFilter = "" | (typeof STATUS_QUERY_VALUES)[number];
+
+const STATUS_FILTER_LABELS: Record<(typeof STATUS_QUERY_VALUES)[number], string> = {
+  SUBMITTED: "Submitted",
+  PAYMENT_PENDING: "Payment pending",
+  PAYMENT_VERIFIED: "Payment completed",
+  UNDER_VERIFICATION: "Under verification",
+  AI_PRE_SCREENING: "AI pre-screening",
+  UAT_PENDING: "UAT pending",
+  UAT_COMPLETED: "UAT completed",
+  FLAGGED_FOR_REVIEW: "Flagged for review",
+  CHANGES_REQUESTED: "Changes requested",
+  PENDING_REVIEW: "Pending review",
+  DECIDED: "Decided",
+  ENROLLED: "Enrolled",
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function toTermText(value: unknown): string {
@@ -40,6 +73,7 @@ export default function ApplicationsPage() {
   const [terms, setTerms] = useState<AdmissionTerm[]>([]);
   const [selectedTermId, setSelectedTermId] = useState("");
   const [termsLoading, setTermsLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -95,9 +129,14 @@ export default function ApplicationsPage() {
     if (!selectedTermId) {
       return;
     }
-    const query = `?term_id=${encodeURIComponent(selectedTermId)}`;
-    callApi(setApplications, `/api/v1/undergraduate/applications${query}`, "GET");
-  }, [selectedTermId]);
+    const params = new URLSearchParams({ term_id: selectedTermId });
+    if (statusFilter) params.set("status", statusFilter);
+    callApi(
+      setApplications,
+      `/api/v1/undergraduate/applications?${params.toString()}`,
+      "GET",
+    );
+  }, [selectedTermId, statusFilter]);
 
   const rows = useMemo(() => {
     if (Array.isArray(applications.data)) return applications.data as AppRow[];
@@ -116,31 +155,61 @@ export default function ApplicationsPage() {
       title="Applications"
       subtitle="Undergraduate applications list (auto-loaded)"
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-[13px] text-[#5a5a5a]">
-          Select term:
-        </p>
-        <select
-          value={selectedTermId}
-          onChange={(e) => setSelectedTermId(e.target.value)}
-          disabled={termsLoading || terms.length === 0}
-          className="h-[36px] min-w-[280px] rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none disabled:opacity-60"
-        >
-          {terms.length === 0 ? (
-            <option value="">
-              {termsLoading ? "Loading admission terms..." : "No admission terms available"}
-            </option>
-          ) : null}
-          {terms.map((term) => (
-            <option key={term.id} value={term.id}>
-              {term.term_name}
-            </option>
-          ))}
-        </select>
+      <div className="mb-3 flex flex-wrap items-end gap-4">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="term-select" className="text-[12px] font-semibold text-[#3a3a3a]">
+            Admission term
+          </label>
+          <select
+            id="term-select"
+            value={selectedTermId}
+            onChange={(e) => setSelectedTermId(e.target.value)}
+            disabled={termsLoading || terms.length === 0}
+            className="h-[36px] min-w-[280px] rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 text-[13px] outline-none disabled:opacity-60"
+          >
+            {terms.length === 0 ? (
+              <option value="">
+                {termsLoading ? "Loading admission terms..." : "No admission terms available"}
+              </option>
+            ) : null}
+            {terms.map((term) => (
+              <option key={term.id} value={term.id}>
+                {term.term_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="status-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
+            Application status
+          </label>
+          <select
+            id="status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="h-[36px] min-w-[220px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] text-[#1a1a1a] outline-none"
+          >
+            <option value="">All statuses</option>
+            {STATUS_QUERY_VALUES.map((v) => (
+              <option key={v} value={v}>
+                {STATUS_FILTER_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <p className="mb-3 text-[13px] text-[#5a5a5a]">
         Total records: <span className="font-semibold text-[#2f76b7]">{rows.length}</span>
+        {statusFilter ? (
+          <>
+            {" "}
+            · Status:{" "}
+            <span className="font-semibold text-[#2f76b7]">
+              {STATUS_FILTER_LABELS[statusFilter as (typeof STATUS_QUERY_VALUES)[number]]}
+            </span>
+          </>
+        ) : null}
       </p>
 
       {applications.loading ? (

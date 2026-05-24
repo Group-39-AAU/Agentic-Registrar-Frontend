@@ -39,39 +39,6 @@ const AI_DECISION_FILTER_LABELS: Record<(typeof AI_DECISION_QUERY_VALUES)[number
   RECOMMEND_WAITLIST: "Recommend waitlist",
 };
 
-/** Sent as `status` query param to the review students API. Default = PENDING_REVIEW. */
-const STATUS_QUERY_VALUES = [
-  "PENDING_REVIEW",
-  "SUBMITTED",
-  "PAYMENT_PENDING",
-  "PAYMENT_VERIFIED",
-  "UNDER_VERIFICATION",
-  "AI_PRE_SCREENING",
-  "UAT_PENDING",
-  "UAT_COMPLETED",
-  "FLAGGED_FOR_REVIEW",
-  "CHANGES_REQUESTED",
-  "DECIDED",
-  "ENROLLED",
-] as const;
-
-type StatusFilter = (typeof STATUS_QUERY_VALUES)[number];
-
-const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
-  PENDING_REVIEW: "Pending review",
-  SUBMITTED: "Submitted",
-  PAYMENT_PENDING: "Payment pending",
-  PAYMENT_VERIFIED: "Payment completed",
-  UNDER_VERIFICATION: "Under verification",
-  AI_PRE_SCREENING: "AI pre-screening",
-  UAT_PENDING: "UAT pending",
-  UAT_COMPLETED: "UAT completed",
-  FLAGGED_FOR_REVIEW: "Flagged for review",
-  CHANGES_REQUESTED: "Changes requested",
-  DECIDED: "Decided",
-  ENROLLED: "Enrolled",
-};
-
 type HumanDecision = "ADMIT" | "REJECT" | "WAITLIST";
 
 const DECISION_OPTIONS: Array<{ value: HumanDecision; label: string; helper: string }> = [
@@ -89,7 +56,6 @@ export default function ReviewPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sponsorshipFilter, setSponsorshipFilter] = useState<SponsorshipFilter>("ALL");
   const [aiDecisionFilter, setAiDecisionFilter] = useState<AiDecisionQueryFilter>("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("PENDING_REVIEW");
 
   const [students, setStudents] = useState<RequestState>(initialState);
   const [decisionResult, setDecisionResult] = useState<RequestState>(initialState);
@@ -113,7 +79,6 @@ export default function ReviewPage() {
         url.searchParams.set("sponsorship_type", sponsorshipType);
         const ai = aiDecisionFilter.trim();
         if (ai) url.searchParams.set("ai_recommended_decision", ai);
-        url.searchParams.set("status", statusFilter);
         return url.toString();
       };
 
@@ -157,7 +122,7 @@ export default function ReviewPage() {
         data: null,
       });
     }
-  }, [aiDecisionFilter, statusFilter]);
+  }, [aiDecisionFilter]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -289,26 +254,6 @@ export default function ReviewPage() {
               ))}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="status-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
-              Application status
-            </label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as StatusFilter);
-                setSelectedIds([]);
-              }}
-              className="h-[36px] min-w-[220px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] text-[#1a1a1a] outline-none"
-            >
-              {STATUS_QUERY_VALUES.map((v) => (
-                <option key={v} value={v}>
-                  {STATUS_FILTER_LABELS[v]}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         {selectedIds.length > 0 ? (
@@ -334,15 +279,10 @@ export default function ReviewPage() {
               of <span className="font-semibold text-[#2f76b7]">{allRows.length}</span> loaded
             </>
           ) : null}
-          {" "}
-          · Status:{" "}
-          <span className="font-semibold text-[#2f76b7]">
-            {STATUS_FILTER_LABELS[statusFilter]}
-          </span>
           {aiDecisionFilter ? (
             <>
               {" "}
-              · AI:{" "}
+              · Filter:{" "}
               <span className="font-semibold text-[#2f76b7]">
                 {AI_DECISION_FILTER_LABELS[aiDecisionFilter as (typeof AI_DECISION_QUERY_VALUES)[number]] ??
                   aiDecisionFilter}
