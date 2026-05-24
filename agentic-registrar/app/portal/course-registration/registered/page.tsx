@@ -129,13 +129,19 @@ export default function RegisteredCoursesPage() {
     courses.length > 0 && selectedCourseIds.length === courses.length;
 
   const totalCreditHours = useMemo(() => {
-    if (showRegisteredTable) {
+    // Whenever the table is rendering courses that are *already* on
+    // the registration (REGISTERED or PAYMENT_HOLD), sum the full list.
+    // selectedCourseIds is cleared right after submit, so falling
+    // through to the picker-style "sum selections" branch would show
+    // 0 on the payment-hold screen. Only the pre-submit picker should
+    // be summing the user's current selections.
+    if (showRegisteredTable || showPaymentHoldTable) {
       return courses.reduce((sum, course) => sum + (course.credit_hours ?? 0), 0);
     }
     return courses
       .filter((course) => selectedCourseIds.includes(course.id))
       .reduce((sum, course) => sum + (course.credit_hours ?? 0), 0);
-  }, [courses, selectedCourseIds, showRegisteredTable]);
+  }, [courses, selectedCourseIds, showRegisteredTable, showPaymentHoldTable]);
 
   function toggleCourse(courseId: string) {
     setSelectedCourseIds((previous) =>
