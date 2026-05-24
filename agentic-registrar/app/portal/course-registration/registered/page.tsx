@@ -152,8 +152,8 @@ export default function RegisteredCoursesPage() {
   function describeError(err: unknown, fallback: string): string {
     if (err instanceof ApiError) {
       return err.message && err.message !== "Request failed"
-        ? `${err.status}: ${err.message}`
-        : `Request failed with status ${err.status}`;
+        ? err.message
+        : fallback;
     }
     if (err instanceof Error) return err.message;
     return fallback;
@@ -451,9 +451,23 @@ export default function RegisteredCoursesPage() {
                     </div>
 
                     {submitError ? (
-                      <p className="mt-4 text-center text-[16px] font-semibold text-[#c0392b]">
-                        {submitError}
-                      </p>
+                      <div className="mt-6 rounded-lg border border-[#f3c4c4] bg-[#fdf5f4] px-6 py-5">
+                        <p className="text-[15px] font-semibold text-[#b04432]">
+                          We couldn&apos;t submit your registration.
+                        </p>
+                        {submitError.includes("\n") ? (
+                          <ul className="mt-2 list-disc space-y-1 pl-6 text-[13px] text-[#5a3a36]">
+                            {submitError.split("\n").map((line, idx) => (
+                              <li key={idx}>{line}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-[13px] text-[#5a3a36]">{submitError}</p>
+                        )}
+                        <p className="mt-3 text-[12px] text-[#7a5a55]">
+                          Adjust your course selection above and try again.
+                        </p>
+                      </div>
                     ) : null}
 
                     <div className="mt-4 flex justify-end">
