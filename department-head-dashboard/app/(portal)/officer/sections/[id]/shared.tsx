@@ -55,6 +55,8 @@ export type ClassScheduleSlotRead = {
   start_time: string;
   end_time: string;
   instructor_id: string | null;
+  instructor_name: string | null;
+  instructor_staff_id: string | null;
   room: string | null;
   course_id: string | null;
   source: "cohort" | "addition" | null;
@@ -168,8 +170,59 @@ function parseSlots(slots: ClassScheduleSlotRead[]): ParsedSlot[] {
     .filter((s): s is ParsedSlot => s !== null);
 }
 
+function minutesToTimeStr(total: number): string {
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function mergeContiguousSlots(slots: ParsedSlot[]): ParsedSlot[] {
+  const groups = new Map<string, ParsedSlot[]>();
+  slots.forEach((s) => {
+    const key = `${s.day}__${s.course_id ?? s.course_code}`;
+    const list = groups.get(key) ?? [];
+    list.push(s);
+    groups.set(key, list);
+  });
+
+  const merged: ParsedSlot[] = [];
+  groups.forEach((list) => {
+    const sorted = [...list].sort((a, b) => a.startMin - b.startMin);
+    let run: ParsedSlot | null = null;
+    const rooms = new Set<string>();
+    let isAddition = false;
+
+    const flush = () => {
+      if (!run) return;
+      merged.push({
+        ...run,
+        start_time: minutesToTimeStr(run.startMin),
+        end_time: minutesToTimeStr(run.endMin),
+        room: rooms.size > 0 ? Array.from(rooms).join(", ") : run.room,
+        source: isAddition ? "addition" : run.source,
+      });
+    };
+
+    sorted.forEach((s) => {
+      if (run && s.startMin <= run.endMin) {
+        run = { ...run, endMin: Math.max(run.endMin, s.endMin) };
+      } else {
+        flush();
+        run = { ...s };
+        rooms.clear();
+        isAddition = false;
+      }
+      if (s.room) rooms.add(s.room);
+      if (s.source === "addition") isAddition = true;
+    });
+    flush();
+  });
+
+  return merged;
+}
+
 export function WeeklyGrid({ slots }: { slots: ClassScheduleSlotRead[] }) {
-  const parsed = useMemo(() => parseSlots(slots), [slots]);
+  const parsed = useMemo(() => mergeContiguousSlots(parseSlots(slots)), [slots]);
 
   if (parsed.length === 0) {
     return (
@@ -275,7 +328,19 @@ export function WeeklyGrid({ slots }: { slots: ClassScheduleSlotRead[] }) {
                             {slot.start_time.slice(0, 5)} – {slot.end_time.slice(0, 5)}
                           </p>
                         ) : null}
-                        {slot.room && height >= 80 ? (
+                        {height >= 80 ? (
+                          <p
+                            className="mt-0.5 truncate text-[10.5px] text-[#5a5a5a]"
+                            title={
+                              slot.instructor_name
+                                ? `${slot.instructor_name}${slot.instructor_staff_id ? ` · ${slot.instructor_staff_id}` : ""}`
+                                : "Instructor not assigned"
+                            }
+                          >
+                            {slot.instructor_name ?? "TBA"}
+                          </p>
+                        ) : null}
+                        {slot.room && height >= 100 ? (
                           <p className="mt-0.5 truncate text-[10.5px] text-[#5a5a5a]">
                             Room {slot.room}
                           </p>

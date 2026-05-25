@@ -60,12 +60,15 @@ type BatchView = {
   id: string;
   section_id: string;
   section_code: string;
+  section_semester: number;
   course_id: string;
   course_code: string;
   course_title: string;
   course_credit_hours: number;
   term_id: string;
+  term_name: string;
   instructor_id: string;
+  instructor_name: string;
   breakdown_id: string;
   status: GradeSubmissionStatus;
   iteration_count: number;
@@ -150,6 +153,15 @@ function formatDateTime(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function semesterToYearLabel(semester: number | null | undefined): string {
+  if (semester == null || !Number.isFinite(semester) || semester < 1) {
+    return "Year — · Sem —";
+  }
+  const year = Math.ceil(semester / 2);
+  const sem = ((semester - 1) % 2) + 1;
+  return `Year ${year} · Sem ${sem}`;
 }
 
 // Grade workflow status — where the batch sits in the submit→authorise
@@ -405,10 +417,22 @@ export default function OfficerGradingBatchDetail() {
                 </h1>
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px] text-[#5a5a5a]">
                   <span>
+                    <span className="font-semibold text-[#1f2f40]">
+                      {semesterToYearLabel(batch.section_semester)}
+                    </span>
+                  </span>
+                  <span>
                     Section <span className="font-semibold text-[#1f2f40]">{batch.section_code}</span>
+                  </span>
+                  <span>
+                    Instructor{" "}
+                    <span className="font-semibold text-[#1f2f40]">
+                      {batch.instructor_name || "—"}
+                    </span>
                   </span>
                   <span>{batch.course_credit_hours} cr</span>
                   <span>{batch.rows.length} students</span>
+                  {batch.term_name ? <span>Term {batch.term_name}</span> : null}
                   <span>Submitted {formatDateTime(batch.submitted_at)}</span>
                 </div>
               </div>
@@ -557,10 +581,25 @@ function ScoresTab({
     [batch.breakdown.components],
   );
 
+  const sortedRows = useMemo(() => {
+    const scoreFor = (sid: string) =>
+      gradesByStudent.get(sid)?.numeric_score ?? null;
+    return [...batch.rows].sort((a, b) => {
+      const sa = scoreFor(a.student_id);
+      const sb = scoreFor(b.student_id);
+      // Students without a computed grade fall to the bottom.
+      if (sa === null && sb === null) return a.full_name.localeCompare(b.full_name);
+      if (sa === null) return 1;
+      if (sb === null) return -1;
+      if (sb !== sa) return sb - sa; // descending
+      return a.full_name.localeCompare(b.full_name);
+    });
+  }, [batch.rows, gradesByStudent]);
+
   return (
     <Section
       title="Score matrix"
-      subtitle="Read-only view of the instructor's per-student × per-component grid, plus the computed letter each student would receive."
+      subtitle="Read-only view of the instructor's per-student × per-component grid. Each cell shows the component's weighted contribution toward the final 100. Sorted by final numeric score (highest first)."
     >
       <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px]">
         {sortedComponents.map((c) => (
@@ -570,7 +609,7 @@ function ScoresTab({
           >
             <span className="font-semibold text-[#1f2f40]">{c.name}</span>
             <span className="ml-1 text-[#5a5a5a]">
-              · {c.weight} pts (max {c.max_score})
+              · weight {c.weight} (raw out of {c.max_score})
             </span>
           </span>
         ))}
@@ -580,21 +619,30 @@ function ScoresTab({
         <table className="w-full min-w-[860px] border-collapse text-left text-[13px]">
           <thead>
             <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+              <th className="px-3 py-2 text-right">#</th>
               <th className="px-3 py-2">Student</th>
               {sortedComponents.map((c) => (
-                <th key={c.id} className="px-3 py-2 text-right">{c.name}</th>
+                <th key={c.id} className="px-3 py-2 text-right">
+                  {c.name}
+                  <span className="ml-1 font-normal normal-case text-[10px] text-[#5a5a5a]">
+                    /{c.weight}
+                  </span>
+                </th>
               ))}
               <th className="px-3 py-2 text-right">Numeric</th>
               <th className="px-3 py-2 text-center">Letter</th>
             </tr>
           </thead>
           <tbody>
-            {batch.rows.map((row) => {
+            {sortedRows.map((row, idx) => {
               const scoresByComp = new Map<string, number | null>();
               for (const s of row.scores) scoresByComp.set(s.component_id, s.score);
               const grade = gradesByStudent.get(row.student_id);
               return (
                 <tr key={row.student_id} className="border-b border-gray-100">
+                  <td className="px-3 py-2 text-right tabular-nums text-[#5a5a5a]">
+                    {idx + 1}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="font-semibold text-[#1f2f40]">{row.full_name}</div>
                     <div className="mt-0.5 flex items-center gap-2">
@@ -614,13 +662,22 @@ function ScoresTab({
                     </div>
                   </td>
                   {sortedComponents.map((c) => {
-                    const v = scoresByComp.get(c.id);
+                    const raw = scoresByComp.get(c.id);
+                    const weighted =
+                      raw == null || c.max_score === 0
+                        ? null
+                        : (raw / c.max_score) * c.weight;
                     return (
                       <td
                         key={c.id}
                         className="px-3 py-2 text-right tabular-nums text-[#1f2f40]"
+                        title={
+                          raw == null
+                            ? undefined
+                            : `Raw ${raw} / ${c.max_score} × weight ${c.weight}`
+                        }
                       >
-                        {v == null ? "—" : v}
+                        {weighted == null ? "—" : weighted.toFixed(2)}
                       </td>
                     );
                   })}
@@ -645,6 +702,133 @@ function ScoresTab({
         </table>
       </div>
     </Section>
+  );
+}
+
+function formatFlagType(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function FlagCard({ flag }: { flag: Record<string, unknown> }) {
+  const type = typeof flag.type === "string" ? flag.type : null;
+  const severityRaw =
+    typeof flag.severity === "string" ? flag.severity.toUpperCase() : null;
+  const message = typeof flag.message === "string" ? flag.message : null;
+  const affected = Array.isArray(flag.affected_students)
+    ? (flag.affected_students as unknown[])
+    : [];
+
+  const knownKeys = new Set(["type", "severity", "message", "affected_students"]);
+  const extras = Object.entries(flag).filter(([k]) => !knownKeys.has(k));
+
+  const severityStyle = (() => {
+    switch (severityRaw) {
+      case "HIGH":
+      case "CRITICAL":
+        return "border-[#f0bcbc] bg-[#fdebeb] text-[#a31a1a]";
+      case "MEDIUM":
+      case "WARN":
+      case "WARNING":
+        return "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]";
+      case "LOW":
+      case "INFO":
+        return "border-[#cfddec] bg-[#eef4fa] text-[#1f5b94]";
+      default:
+        return "border-gray-300 bg-gray-50 text-gray-700";
+    }
+  })();
+
+  return (
+    <div className="rounded-md border border-[#f0bcbc] bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {severityRaw ? (
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${severityStyle}`}
+          >
+            {severityRaw}
+          </span>
+        ) : null}
+        {type ? (
+          <span className="text-[12px] font-semibold text-[#1f2f40]">
+            {formatFlagType(type)}
+          </span>
+        ) : null}
+      </div>
+
+      {message ? (
+        <p className="mt-2 whitespace-pre-wrap text-[12.5px] text-[#1f2f40]">
+          {message}
+        </p>
+      ) : null}
+
+      {affected.length > 0 ? (
+        <div className="mt-2 rounded-md border border-gray-200 bg-[#fafbfc] p-2">
+          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+            Affected students ({affected.length})
+          </p>
+          <ul className="mt-1 space-y-1 text-[12px] text-[#3a3a3a]">
+            {affected.map((row, i) => {
+              if (row && typeof row === "object") {
+                const r = row as Record<string, unknown>;
+                const name =
+                  typeof r.full_name === "string"
+                    ? r.full_name
+                    : typeof r.student_number === "string"
+                      ? r.student_number
+                      : typeof r.name === "string"
+                        ? r.name
+                        : null;
+                const id =
+                  typeof r.student_number === "string"
+                    ? r.student_number
+                    : typeof r.student_id === "string"
+                      ? r.student_id
+                      : null;
+                if (name || id) {
+                  return (
+                    <li key={`affected-${i}`}>
+                      {name ? (
+                        <span className="font-semibold text-[#1f2f40]">
+                          {name}
+                        </span>
+                      ) : null}
+                      {name && id && id !== name ? (
+                        <span className="ml-2 font-mono text-[11px] text-[#5a5a5a]">
+                          {id}
+                        </span>
+                      ) : id ? (
+                        <span className="font-mono text-[11px]">{id}</span>
+                      ) : null}
+                    </li>
+                  );
+                }
+              }
+              return (
+                <li key={`affected-${i}`} className="font-mono text-[11px]">
+                  {String(row)}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {extras.length > 0 ? (
+        <details className="mt-2 text-[11.5px] text-[#5a5a5a]">
+          <summary className="cursor-pointer font-semibold uppercase tracking-wide">
+            More detail
+          </summary>
+          <pre className="mt-1 max-h-[180px] overflow-auto rounded bg-[#f8fafc] p-2 text-[11px] text-[#3a3a3a]">
+            {JSON.stringify(Object.fromEntries(extras), null, 2)}
+          </pre>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -690,15 +874,13 @@ function AgentReviewsTab({ reviews }: { reviews: AgentReview[] }) {
             )}
             {r.flags.length > 0 ? (
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#a31a1a]">
-                  Flags
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#a31a1a]">
+                  Flags ({r.flags.length})
                 </p>
-                <ul className="list-disc space-y-1 pl-4">
+                <ul className="space-y-2">
                   {r.flags.map((f, i) => (
-                    <li key={`${r.id}-flag-${i}`} className="text-[#3a3a3a]">
-                      <code className="break-all text-[11.5px] text-[#1f2f40]">
-                        {JSON.stringify(f)}
-                      </code>
+                    <li key={`${r.id}-flag-${i}`}>
+                      <FlagCard flag={f} />
                     </li>
                   ))}
                 </ul>

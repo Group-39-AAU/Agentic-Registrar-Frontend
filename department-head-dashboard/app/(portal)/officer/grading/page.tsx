@@ -44,11 +44,6 @@ type CourseTerm = {
   is_open?: boolean;
 };
 
-type QueueDepartmentOption = {
-  department: string;
-  pending_count: number;
-};
-
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const token = localStorage.getItem("admin_dashboard_token") ?? "";
@@ -163,13 +158,14 @@ export default function OfficerGradingQueuePage() {
   const [terms, setTerms] = useState<CourseTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termId, setTermId] = useState<string>("");
-  const [departmentFilter, setDepartmentFilter] = useState<string>("");
-  const [departments, setDepartments] = useState<QueueDepartmentOption[]>([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(false);
 
   const [entries, setEntries] = useState<QueueEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [history, setHistory] = useState<QueueEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,8 +198,6 @@ export default function OfficerGradingQueuePage() {
         `${API_BASE}/api/v1/courses/grading/officer/queue`,
       );
       if (termId) url.searchParams.set("term_id", termId);
-      if (departmentFilter.trim())
-        url.searchParams.set("department", departmentFilter.trim());
       const res = await fetch(url.toString(), { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -221,42 +215,42 @@ export default function OfficerGradingQueuePage() {
     } finally {
       setLoading(false);
     }
-  }, [termId, departmentFilter]);
+  }, [termId]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const url = new URL(
+        `${API_BASE}/api/v1/courses/grading/officer/queue`,
+      );
+      url.searchParams.set("status", "AUTHORISED");
+      if (termId) url.searchParams.set("term_id", termId);
+      const res = await fetch(url.toString(), { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          data && typeof data === "object" && "detail" in data
+            ? String((data as { detail?: unknown }).detail ?? "Request failed")
+            : "Could not load history.";
+        throw new Error(`${detail} (HTTP ${res.status})`);
+      }
+      const rows = Array.isArray(data) ? (data as QueueEntry[]) : [];
+      setHistory(rows);
+    } catch (e) {
+      setHistoryError(
+        e instanceof Error ? e.message : "Could not load history.",
+      );
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [termId]);
 
   useEffect(() => {
     void loadQueue();
-  }, [loadQueue]);
-
-  // Load the department dropdown options whenever the selected term
-  // changes. Each option carries its pending count. Reset any previously
-  // chosen department since the available set is term-specific.
-  useEffect(() => {
-    let cancelled = false;
-    setDepartmentsLoading(true);
-    setDepartmentFilter("");
-    (async () => {
-      try {
-        const url = new URL(
-          `${API_BASE}/api/v1/courses/grading/officer/queue/departments`,
-        );
-        if (termId) url.searchParams.set("term_id", termId);
-        const res = await fetch(url.toString(), { headers: authHeaders() });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error("Could not load departments.");
-        const rows = Array.isArray(data)
-          ? (data as QueueDepartmentOption[])
-          : [];
-        if (!cancelled) setDepartments(rows);
-      } catch {
-        if (!cancelled) setDepartments([]);
-      } finally {
-        if (!cancelled) setDepartmentsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [termId]);
+    void loadHistory();
+  }, [loadQueue, loadHistory]);
 
   const counts = useMemo(() => {
     let submitted = 0;
@@ -285,6 +279,7 @@ export default function OfficerGradingQueuePage() {
         throw new Error(`${detail} (HTTP ${res.status})`);
       }
       await loadQueue();
+      await loadHistory();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Rerun failed.");
     }
@@ -302,18 +297,19 @@ export default function OfficerGradingQueuePage() {
             Grading review queue
           </h1>
           <p className="mt-2 max-w-[680px] text-[14px] leading-relaxed text-[#5a5a5a]">
-            Batches the GradingMonitorAgent has finished reviewing. Open one to
-            see the full packet, then authorise or reject. Re-run the agent on
-            any row whose latest verdict is PENDING.
+            Batches the GradingMonitorAgent has finished reviewing for your
+            department. Open one to see the full packet, then authorise or
+            reject. Re-run the agent on any row whose latest verdict is
+            PENDING. Authorised history appears below for reference.
           </p>
         </div>
       </div>
 
       <Section
         title="Pending batches"
-        subtitle="Defaults to every batch awaiting a department-head decision (SUBMITTED + FLAGGED), oldest first."
+        subtitle="Every batch awaiting a decision in your department (SUBMITTED + FLAGGED), oldest first."
       >
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <div>
             <label
               htmlFor="term-filter"
@@ -337,42 +333,17 @@ export default function OfficerGradingQueuePage() {
               ))}
             </select>
           </div>
-          <div>
-            <label
-              htmlFor="dept-filter"
-              className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a5a5a]"
-            >
-              Department
-            </label>
-            <select
-              id="dept-filter"
-              value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
-              disabled={departmentsLoading}
-              className="h-[36px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
-            >
-              <option value="">
-                {departmentsLoading
-                  ? "Loading departments…"
-                  : departments.length === 0
-                    ? "No departments with pending batches"
-                    : "All departments"}
-              </option>
-              {departments.map((d) => (
-                <option key={d.department} value={d.department}>
-                  {d.department} ({d.pending_count})
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="flex items-end">
             <button
               type="button"
-              onClick={() => void loadQueue()}
-              disabled={loading}
+              onClick={() => {
+                void loadQueue();
+                void loadHistory();
+              }}
+              disabled={loading || historyLoading}
               className="h-[36px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
             >
-              {loading ? "Refreshing…" : "Refresh"}
+              {loading || historyLoading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>
@@ -493,6 +464,108 @@ export default function OfficerGradingQueuePage() {
                           </button>
                         ) : null}
                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title="Authorised history"
+        subtitle="Batches you've already authorised in your department, most recent first."
+      >
+        {historyError ? (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+            {historyError}
+          </p>
+        ) : historyLoading ? (
+          <p className="text-[13px] text-[#5a5a5a]">Loading history…</p>
+        ) : history.length === 0 ? (
+          <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-6 text-center text-[13px] text-[#5a5a5a]">
+            No batches have been authorised yet
+            {termId ? " for this term" : ""}.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full min-w-[960px] border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                  <th className="px-4 py-3 text-right">#</th>
+                  <th className="px-4 py-3">Course / Section</th>
+                  <th className="px-4 py-3">Instructor</th>
+                  <th className="px-4 py-3">Term</th>
+                  <th className="px-4 py-3">Agent review</th>
+                  <th className="px-4 py-3 text-right">Roster</th>
+                  <th className="px-4 py-3 text-right">Iter</th>
+                  <th className="px-4 py-3">Submitted</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((e, idx) => (
+                  <tr
+                    key={e.batch_id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => router.push(`/officer/grading/${e.batch_id}`)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        router.push(`/officer/grading/${e.batch_id}`);
+                      }
+                    }}
+                    className="cursor-pointer border-b border-gray-100 hover:bg-[#eef4ff]/70"
+                  >
+                    <td className="px-4 py-3 text-right tabular-nums text-[#5a5a5a]">
+                      {idx + 1}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-mono text-[12.5px] font-semibold text-[#1f5b94]">
+                        {e.course_code}
+                      </div>
+                      <div className="mt-0.5 text-[12.5px] text-[#1f2f40]">
+                        {e.course_title}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-[#5a5a5a]">
+                        Section {e.section_code} · Sem {e.section_semester}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-[12.5px] text-[#1f2f40]">
+                      {e.instructor_name}
+                    </td>
+                    <td className="px-4 py-3 text-[12.5px] text-[#3a3a3a]">
+                      {e.term_name}
+                    </td>
+                    <td className="px-4 py-3">
+                      <VerdictPill verdict={e.latest_agent_verdict} />
+                      {e.flag_count > 0 ? (
+                        <div className="mt-1 text-[11px] font-semibold text-[#a31a1a]">
+                          {e.flag_count} flag{e.flag_count === 1 ? "" : "s"}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {e.roster_total}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {e.iteration_count}
+                    </td>
+                    <td className="px-4 py-3 text-[12px] text-[#5a5a5a]">
+                      {formatDateTime(e.submitted_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right" onClick={(ev) => ev.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/officer/grading/${e.batch_id}`)
+                        }
+                        className="h-[30px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[11px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))}

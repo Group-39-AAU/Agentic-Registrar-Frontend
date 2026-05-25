@@ -329,7 +329,19 @@ function WeeklyGrid({ slots }: { slots: ScheduleSlot[] }) {
                             {slot.start_time.slice(0, 5)} – {slot.end_time.slice(0, 5)}
                           </p>
                         ) : null}
-                        {slot.room && height >= 80 ? (
+                        {height >= 80 ? (
+                          <p
+                            className="mt-0.5 truncate text-[10.5px] text-[#5a5a5a]"
+                            title={
+                              slot.instructor_name
+                                ? `${slot.instructor_name}${slot.instructor_staff_id ? ` · ${slot.instructor_staff_id}` : ""}`
+                                : "Instructor not assigned"
+                            }
+                          >
+                            {slot.instructor_name ?? "TBA"}
+                          </p>
+                        ) : null}
+                        {slot.room && height >= 100 ? (
                           <p className="mt-0.5 truncate text-[10.5px] text-[#5a5a5a]">
                             Room {slot.room}
                           </p>
@@ -351,12 +363,23 @@ function fmtTime(t: string): string {
   return t ? t.slice(0, 5) : t;
 }
 
-function SlotLine({ slot }: { slot: { day_of_week: string; start_time: string; end_time: string; room?: string } }) {
+function SlotLine({
+  slot,
+}: {
+  slot: {
+    day_of_week: string;
+    start_time: string;
+    end_time: string;
+    room?: string;
+    instructor_name?: string | null;
+  };
+}) {
   const day = normalizeDay(slot.day_of_week);
   return (
     <span className="tabular-nums">
       {day ? DAY_LABEL[day] : slot.day_of_week} {fmtTime(slot.start_time)}–{fmtTime(slot.end_time)}
       {slot.room ? ` · Room ${slot.room}` : ""}
+      {slot.instructor_name ? ` · ${slot.instructor_name}` : ""}
     </span>
   );
 }

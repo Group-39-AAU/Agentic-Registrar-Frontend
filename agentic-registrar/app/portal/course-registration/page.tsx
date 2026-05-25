@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdvisoryConsultPanel from "@/components/AdvisoryConsultPanel";
 import PortalFooter from "@/components/PortalFooter";
@@ -108,7 +108,7 @@ function SearchSelect({
   );
 }
 
-export default function CourseRegistrationPage() {
+function CourseRegistrationPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "1";
@@ -309,5 +309,13 @@ export default function CourseRegistrationPage() {
           consult before clicking through to course selection. */}
       {selectedTerm ? <AdvisoryConsultPanel termId={selectedTerm.id} /> : null}
     </div>
+  );
+}
+
+export default function CourseRegistrationPage() {
+  return (
+    <Suspense fallback={null}>
+      <CourseRegistrationPageInner />
+    </Suspense>
   );
 }

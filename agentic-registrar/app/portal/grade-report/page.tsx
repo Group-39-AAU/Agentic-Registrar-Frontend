@@ -213,6 +213,10 @@ export default function GradeReportPage() {
   // Compute SGP (sum of grade_points × credit_hours) per term and the
   // running cumulative CGP, so the per-semester stats box matches the
   // legacy layout (SGP / SGPA / CGP / CGPA).
+  // Terms whose academic standing hasn't been authorised yet are
+  // treated as pending: they contribute neither SGP/SGPA nor a
+  // CGPA-bearing row, because the grade set isn't finalised until the
+  // DH authorises the standing.
   const terms = transcript?.terms ?? [];
   // Backend returns terms newest-first; for a meaningful running CGP we
   // walk oldest → newest to accumulate, then render in the API order.
@@ -221,6 +225,10 @@ export default function GradeReportPage() {
   let runCgp = 0;
   let runCredits = 0;
   for (const t of orderedAsc) {
+    if (!t.academic_status_authorised_at) {
+      // Standing not yet authorised → skip this term in the running CGPA.
+      continue;
+    }
     let sgp = 0;
     let credits = 0;
     for (const c of t.courses) {
@@ -363,26 +371,39 @@ export default function GradeReportPage() {
                             <div className="m-4 rounded-[8px] border border-[#dedede] bg-[#ffffff] px-4 py-2 md:my-[50px] md:px-[80px]">
                               <div className="inline-grid grid-cols-1 gap-x-8 gap-y-1 md:grid-cols-2 md:gap-x-[100px]">
                                 <p className="font-semibold">
-                                  SGP : {formatNumber(sgp)}
+                                  SGP :{" "}
+                                  {term.academic_status_authorised_at
+                                    ? formatNumber(sgp)
+                                    : "-"}
                                 </p>
                                 <p className="font-semibold">
-                                  SGPA : {formatNumber(term.term_gpa)}
+                                  SGPA :{" "}
+                                  {term.academic_status_authorised_at
+                                    ? formatNumber(term.term_gpa)
+                                    : "-"}
                                 </p>
                                 <p className="font-semibold">
-                                  CGP : {formatNumber(totals.cgp)}
+                                  CGP :{" "}
+                                  {term.academic_status_authorised_at
+                                    ? formatNumber(totals.cgp)
+                                    : "-"}
                                 </p>
                                 <p className="font-semibold">
                                   CGPA :{" "}
-                                  {formatNumber(
-                                    totals.credits > 0
-                                      ? totals.cgp / totals.credits
-                                      : null,
-                                  )}
+                                  {term.academic_status_authorised_at
+                                    ? formatNumber(
+                                        totals.credits > 0
+                                          ? totals.cgp / totals.credits
+                                          : null,
+                                      )
+                                    : "-"}
                                 </p>
                               </div>
                               <p className="mt-6 font-semibold">
                                 Academic Status :{" "}
-                                {academicStatus(term.term_gpa, term.academic_status)}
+                                {term.academic_status_authorised_at
+                                  ? academicStatus(term.term_gpa, term.academic_status)
+                                  : "-"}
                                 {term.academic_status_authorised_at ? (
                                   <span className="ml-2 text-[12px] font-normal text-[#5a5a5a]">
                                     (authorised{" "}

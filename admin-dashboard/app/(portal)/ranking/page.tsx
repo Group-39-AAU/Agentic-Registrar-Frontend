@@ -1,6 +1,7 @@
 "use client";
 
 import { JsonResult, RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
+import Pagination from "@/components/Pagination";
 import { useEffect, useMemo, useState } from "react";
 
 type AdmissionTerm = {
@@ -30,6 +31,13 @@ export default function RankingPage() {
   const [rankingRun, setRankingRun] = useState<RequestState>(initialState);
   const [summary, setSummary] = useState<RequestState>(initialState);
   const [results, setResults] = useState<RequestState>(initialState);
+  // Client-side pagination for the ranking results tables. The backend
+  // returns the full list per term; we slice locally. Three independent
+  // page indices — one per table that can be visible.
+  const [govPage, setGovPage] = useState(1);
+  const [selfPage, setSelfPage] = useState(1);
+  const [singlePage, setSinglePage] = useState(1);
+  const [resultsPageSize, setResultsPageSize] = useState(25);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +158,30 @@ export default function RankingPage() {
       return String(r.category ?? "").toUpperCase() === "SELF_SPONSORED";
     });
   }, [isAllSelected, resultRows]);
+
+  // Reset every paginator whenever the user changes term/category/size
+  // — the in-memory list could shrink, so an out-of-range page index
+  // would render an empty table.
+  useEffect(() => {
+    setGovPage(1);
+    setSelfPage(1);
+    setSinglePage(1);
+  }, [selectedResultsTermId, category, resultsPageSize, resultRows.length]);
+
+  const govPageRows = useMemo(() => {
+    const start = (govPage - 1) * resultsPageSize;
+    return governmentRows.slice(start, start + resultsPageSize);
+  }, [governmentRows, govPage, resultsPageSize]);
+
+  const selfPageRows = useMemo(() => {
+    const start = (selfPage - 1) * resultsPageSize;
+    return selfSponsoredRows.slice(start, start + resultsPageSize);
+  }, [selfSponsoredRows, selfPage, resultsPageSize]);
+
+  const singlePageRows = useMemo(() => {
+    const start = (singlePage - 1) * resultsPageSize;
+    return resultRows.slice(start, start + resultsPageSize);
+  }, [resultRows, singlePage, resultsPageSize]);
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -359,7 +391,8 @@ export default function RankingPage() {
             <div>
               <h3 className="mb-2 text-[13px] font-semibold text-[#2f76b7]">Government</h3>
               {governmentRows.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
                     <thead>
                       <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
@@ -373,7 +406,7 @@ export default function RankingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {governmentRows.map((row, idx) => {
+                      {govPageRows.map((row, idx) => {
                         const r = row as Record<string, unknown>;
                         return (
                           <tr key={String(r.id ?? `gov-${idx}`)} className="border-b border-gray-100">
@@ -391,6 +424,15 @@ export default function RankingPage() {
                       })}
                     </tbody>
                   </table>
+                  </div>
+                  <Pagination
+                    page={govPage}
+                    pageSize={resultsPageSize}
+                    total={governmentRows.length}
+                    onPageChange={setGovPage}
+                    onPageSizeChange={setResultsPageSize}
+                    itemLabel="applicants"
+                  />
                 </div>
               ) : (
                 <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-3 text-[13px] text-[#5a5a5a]">
@@ -402,7 +444,8 @@ export default function RankingPage() {
             <div>
               <h3 className="mb-2 text-[13px] font-semibold text-[#2f76b7]">Self Sponsored</h3>
               {selfSponsoredRows.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
                     <thead>
                       <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
@@ -416,7 +459,7 @@ export default function RankingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selfSponsoredRows.map((row, idx) => {
+                      {selfPageRows.map((row, idx) => {
                         const r = row as Record<string, unknown>;
                         return (
                           <tr key={String(r.id ?? `self-${idx}`)} className="border-b border-gray-100">
@@ -434,6 +477,15 @@ export default function RankingPage() {
                       })}
                     </tbody>
                   </table>
+                  </div>
+                  <Pagination
+                    page={selfPage}
+                    pageSize={resultsPageSize}
+                    total={selfSponsoredRows.length}
+                    onPageChange={setSelfPage}
+                    onPageSizeChange={setResultsPageSize}
+                    itemLabel="applicants"
+                  />
                 </div>
               ) : (
                 <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-3 text-[13px] text-[#5a5a5a]">
@@ -443,7 +495,8 @@ export default function RankingPage() {
             </div>
           </div>
         ) : resultRows.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
@@ -457,7 +510,7 @@ export default function RankingPage() {
                 </tr>
               </thead>
               <tbody>
-                {resultRows.map((row, idx) => {
+                {singlePageRows.map((row, idx) => {
                   const r = row as Record<string, unknown>;
                   return (
                     <tr key={String(r.id ?? idx)} className="border-b border-gray-100">
@@ -475,6 +528,15 @@ export default function RankingPage() {
                 })}
               </tbody>
             </table>
+            </div>
+            <Pagination
+              page={singlePage}
+              pageSize={resultsPageSize}
+              total={resultRows.length}
+              onPageChange={setSinglePage}
+              onPageSizeChange={setResultsPageSize}
+              itemLabel="applicants"
+            />
           </div>
         ) : null}
       </Section>

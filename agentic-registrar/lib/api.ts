@@ -491,6 +491,8 @@ export type ScheduleSlot = {
   start_time: string;
   end_time: string;
   instructor_id?: string;
+  instructor_name?: string | null;
+  instructor_staff_id?: string | null;
   room?: string;
   course_id?: string;
   source?: string;
@@ -553,6 +555,8 @@ export type ScheduleSlotSummary = {
   end_time: string;
   room?: string;
   instructor_id?: string;
+  instructor_name?: string | null;
+  instructor_staff_id?: string | null;
 };
 
 /** A candidate slot that collides with a slot already on the schedule. */
@@ -859,6 +863,36 @@ export async function fetchUndergraduateApplicationById(
   return raw as UndergraduateApplicationRecord;
 }
 
+export type EnrollmentRecord = {
+  id: string;
+  application_id: string;
+  applicant_id: string;
+  student_full_name?: string | null;
+  admission_term_id: string;
+  university_id: string;
+  program_id?: string | null;
+  department: string;
+  enrollment_term: string;
+  created_at: string;
+};
+
+/** GET /api/v1/undergraduate/enrollment/{application_id} — returns null on 404 */
+export async function fetchEnrollmentByApplicationId(
+  applicationId: string
+): Promise<EnrollmentRecord | null> {
+  const token = getStoredAccessToken();
+  const headers: HeadersInit = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(
+    `${API_BASE}/api/v1/undergraduate/enrollment/${encodeURIComponent(applicationId)}`,
+    { headers }
+  );
+  if (res.status === 404) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as EnrollmentRecord;
+}
+
 /** GET /api/v1/undergraduate/applications/me — requires Bearer token */
 export async function fetchMyApplications(): Promise<
   UndergraduateApplicationRecord[]
@@ -1004,6 +1038,7 @@ export type SubmitCorrectionsBody = {
   admission_number: string;
   first_name: string;
   last_name: string;
+  stream: "NATURAL" | "SOCIAL";
 };
 
 /** POST /api/v1/undergraduate/applications/{application_id}/payment/callback */

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Header from "./components/header";
 import PortalLoginForm from "../components/PortalLoginForm";
 
@@ -18,14 +19,15 @@ function PortalTile({
   title,
   description,
   imageUrl,
+  href,
 }: {
   title: string;
   description: string;
   variant: "exams" | "admission" | "alumni";
   imageUrl: string;
+  href?: string;
 }) {
-  
-  return (
+  const card = (
     <div className="group h-[128px] w-full cursor-pointer overflow-hidden rounded-md bg-[linear-gradient(135deg,#3a86c4_0%,#2f76b7_55%,#28649b_100%)] shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-16px_rgba(31,91,148,0.5)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_2px_4px_rgba(15,23,42,0.08),0_22px_36px_-18px_rgba(31,91,148,0.7)]">
       <div className="flex h-full w-full">
         <div className="flex-1 overflow-hidden rounded-r-[40%] rounded-l-none">
@@ -46,6 +48,13 @@ function PortalTile({
         </div>
       </div>
     </div>
+  );
+
+  if (!href) return card;
+  return (
+    <Link href={href} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3f79b5] rounded-md">
+      {card}
+    </Link>
   );
 }
 
@@ -100,6 +109,7 @@ export default function Home() {
                 title="Apply for Admission"
                 description="New applicants who aspire to join Addis Ababa University can apply"
                 imageUrl="/assets/Admission.jpg"
+                href="/admissions"
               />
               <PortalTile
                 variant="alumni"

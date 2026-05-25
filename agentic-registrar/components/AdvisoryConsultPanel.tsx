@@ -110,7 +110,7 @@ export default function AdvisoryConsultPanel({ termId }: Props) {
               Pre-registration consult
             </h3>
             <p className="mt-1 text-[12px] leading-relaxed text-[#5a5a5a]">
-              A suggestion to inform your choices — not a hard rule.
+              A suggestion to inform your choices.
             </p>
           </div>
           <button

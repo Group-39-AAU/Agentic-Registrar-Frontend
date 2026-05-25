@@ -6,7 +6,7 @@ import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
 import PortalTopStrip from "@/components/PortalTopStrip";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   callbackRegistrationPayment,
@@ -31,7 +31,7 @@ function semesterToYear(currentSemester: number): string {
 
 // TopStrip moved to shared component PortalTopStrip.
 
-export default function RegisteredCoursesPage() {
+function RegisteredCoursesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const termId = searchParams.get("termId") || "";
@@ -111,19 +111,37 @@ export default function RegisteredCoursesPage() {
   const showRegisterTable = isOpen && !isRegistered;
   const showPaymentHoldTable = isPaymentHold;
   const showRegisteredTable = isRegistered && !isPaymentHold;
-  const showClosedMessage = available !== null && !isOpen && !isRegistered;
+
+  // A closed term with no registration falls into one of two empty
+  // states — past (the student never registered) vs future (the
+  // window hasn't opened yet). We pick the copy off start_date.
+  const closedNoRegistration = available !== null && !isOpen && !isRegistered;
+  const termStartDate = available?.term?.start_date
+    ? new Date(available.term.start_date)
+    : null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isFutureClosed = closedNoRegistration && !!termStartDate && termStartDate > today;
+  const showNotYetOpenCard = isFutureClosed;
+  const showNotRegisteredCard = closedNoRegistration && !isFutureClosed;
 
   const allSelected =
     courses.length > 0 && selectedCourseIds.length === courses.length;
 
   const totalCreditHours = useMemo(() => {
-    if (showRegisteredTable) {
+    // Whenever the table is rendering courses that are *already* on
+    // the registration (REGISTERED or PAYMENT_HOLD), sum the full list.
+    // selectedCourseIds is cleared right after submit, so falling
+    // through to the picker-style "sum selections" branch would show
+    // 0 on the payment-hold screen. Only the pre-submit picker should
+    // be summing the user's current selections.
+    if (showRegisteredTable || showPaymentHoldTable) {
       return courses.reduce((sum, course) => sum + (course.credit_hours ?? 0), 0);
     }
     return courses
       .filter((course) => selectedCourseIds.includes(course.id))
       .reduce((sum, course) => sum + (course.credit_hours ?? 0), 0);
-  }, [courses, selectedCourseIds, showRegisteredTable]);
+  }, [courses, selectedCourseIds, showRegisteredTable, showPaymentHoldTable]);
 
   function toggleCourse(courseId: string) {
     setSelectedCourseIds((previous) =>
@@ -140,8 +158,8 @@ export default function RegisteredCoursesPage() {
   function describeError(err: unknown, fallback: string): string {
     if (err instanceof ApiError) {
       return err.message && err.message !== "Request failed"
-        ? `${err.status}: ${err.message}`
-        : `Request failed with status ${err.status}`;
+        ? err.message
+        : fallback;
     }
     if (err instanceof Error) return err.message;
     return fallback;
@@ -263,10 +281,34 @@ export default function RegisteredCoursesPage() {
                   </p>
                 ) : null}
 
-                {showClosedMessage ? (
-                  <p className="mt-6 text-center text-[16px] font-semibold text-[#c0392b]">
-                    Registration is closed
-                  </p>
+                {showNotRegisteredCard ? (
+                  <div className="mt-8 rounded-lg border border-[#dbe3ec] bg-[#f5f8fc] px-6 py-8 text-center">
+                    <p className="text-[16px] font-semibold text-[#2f78b7]">
+                      You weren&apos;t registered for this term.
+                    </p>
+                    <p className="mt-2 text-[13px] text-[#5a5a5a]">
+                      No registration record exists for{" "}
+                      <span className="font-semibold text-[#1f1f1f]">
+                        {available?.term?.term_name ?? "this academic term"}
+                      </span>
+                      . Switch to a different academic year or semester to view its courses.
+                    </p>
+                  </div>
+                ) : null}
+
+                {showNotYetOpenCard ? (
+                  <div className="mt-8 rounded-lg border border-[#e6dfc6] bg-[#fdf8eb] px-6 py-8 text-center">
+                    <p className="text-[16px] font-semibold text-[#9a7a1c]">
+                      This term hasn&apos;t opened yet.
+                    </p>
+                    <p className="mt-2 text-[13px] text-[#5a5a5a]">
+                      Registration for{" "}
+                      <span className="font-semibold text-[#1f1f1f]">
+                        {available?.term?.term_name ?? "this academic term"}
+                      </span>{" "}
+                      is not open. Pick the current open term to register.
+                    </p>
+                  </div>
                 ) : null}
 
                 {showPaymentHoldTable ? (
@@ -415,9 +457,23 @@ export default function RegisteredCoursesPage() {
                     </div>
 
                     {submitError ? (
-                      <p className="mt-4 text-center text-[16px] font-semibold text-[#c0392b]">
-                        {submitError}
-                      </p>
+                      <div className="mt-6 rounded-lg border border-[#f3c4c4] bg-[#fdf5f4] px-6 py-5">
+                        <p className="text-[15px] font-semibold text-[#b04432]">
+                          We couldn&apos;t submit your registration.
+                        </p>
+                        {submitError.includes("\n") ? (
+                          <ul className="mt-2 list-disc space-y-1 pl-6 text-[13px] text-[#5a3a36]">
+                            {submitError.split("\n").map((line, idx) => (
+                              <li key={idx}>{line}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-[13px] text-[#5a3a36]">{submitError}</p>
+                        )}
+                        <p className="mt-3 text-[12px] text-[#7a5a55]">
+                          Adjust your course selection above and try again.
+                        </p>
+                      </div>
                     ) : null}
 
                     <div className="mt-4 flex justify-end">
@@ -619,5 +675,13 @@ export default function RegisteredCoursesPage() {
           actually submit the registration. */}
       {termId ? <AdvisoryConsultPanel termId={termId} /> : null}
     </div>
+  );
+}
+
+export default function RegisteredCoursesPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisteredCoursesPageInner />
+    </Suspense>
   );
 }

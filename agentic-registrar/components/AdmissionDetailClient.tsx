@@ -7,11 +7,13 @@ import {
   ApiError,
   callbackApplicationPayment,
   clearStoredAccessToken,
+  fetchEnrollmentByApplicationId,
   fetchTestingCenterCallback,
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
   initiateApplicationPayment,
   submitApplicationCorrections,
+  type EnrollmentRecord,
   type PaymentInitiateResponse,
   type TestingCenterCallbackResponse,
   type UndergraduateApplicationRecord,
@@ -149,9 +151,12 @@ export default function AdmissionDetailClient({
   const [uatLoading, setUatLoading] = useState(false);
   const [uatError, setUatError] = useState<string | null>(null);
   const [uatResult, setUatResult] = useState<TestingCenterCallbackResponse | null>(null);
+  const [enrollment, setEnrollment] = useState<EnrollmentRecord | null>(null);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [correctionAdmissionNumber, setCorrectionAdmissionNumber] = useState("");
   const [correctionFirstName, setCorrectionFirstName] = useState("");
   const [correctionLastName, setCorrectionLastName] = useState("");
+  const [correctionStream, setCorrectionStream] = useState<"NATURAL" | "SOCIAL" | "">("");
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [correctionSuccessModalOpen, setCorrectionSuccessModalOpen] = useState(false);
@@ -207,6 +212,32 @@ export default function AdmissionDetailClient({
     setModalPaymentRef(paymentInit.payment_reference);
   }, [paymentModalOpen, paymentInit]);
 
+  // Fetch the enrollment record once the application reaches ENROLLED so we
+  // can show the student's university ID. The backend returns 404 until the
+  // enrollment row is created, which the helper normalizes to null.
+  useEffect(() => {
+    if (!data) return;
+    if ((data.current_status ?? "").toUpperCase() !== "ENROLLED") {
+      setEnrollment(null);
+      return;
+    }
+    let cancelled = false;
+    setEnrollmentLoading(true);
+    (async () => {
+      try {
+        const row = await fetchEnrollmentByApplicationId(applicationId);
+        if (!cancelled) setEnrollment(row);
+      } catch {
+        if (!cancelled) setEnrollment(null);
+      } finally {
+        if (!cancelled) setEnrollmentLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, data]);
+
   // Pre-fill the correction form with the applicant's current values
   // whenever the app loads in CHANGES_REQUESTED — but only seed each
   // field once (don't overwrite what the student is actively editing).
@@ -216,6 +247,11 @@ export default function AdmissionDetailClient({
     setCorrectionAdmissionNumber((prev) => prev || data.admission_number || "");
     setCorrectionFirstName((prev) => prev || data.applicant_first_name || "");
     setCorrectionLastName((prev) => prev || data.applicant_last_name || "");
+    setCorrectionStream((prev) => {
+      if (prev) return prev;
+      const s = (data.stream ?? "").toUpperCase();
+      return s === "NATURAL" || s === "SOCIAL" ? s : "";
+    });
   }, [data]);
 
   useEffect(() => {
@@ -283,9 +319,10 @@ export default function AdmissionDetailClient({
     const admissionNumber = correctionAdmissionNumber.trim();
     const firstName = correctionFirstName.trim();
     const lastName = correctionLastName.trim();
+    const stream = correctionStream;
 
-    if (!admissionNumber || !firstName || !lastName) {
-      setCorrectionError("Admission number, first name, and last name are all required.");
+    if (!admissionNumber || !firstName || !lastName || !stream) {
+      setCorrectionError("Admission number, first name, last name, and stream are all required.");
       return;
     }
 
@@ -296,6 +333,7 @@ export default function AdmissionDetailClient({
         admission_number: admissionNumber,
         first_name: firstName,
         last_name: lastName,
+        stream,
       });
       setCorrectionSuccessModalOpen(true);
       await reloadApplication();
@@ -504,7 +542,7 @@ export default function AdmissionDetailClient({
             </p>
           </div>
           <div className="space-y-4 px-8 py-6">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="correction-admission-number" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
                   Admission Number
@@ -516,6 +554,22 @@ export default function AdmissionDetailClient({
                   required
                   className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
                 />
+              </div>
+              <div>
+                <label htmlFor="correction-stream" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
+                  Stream
+                </label>
+                <select
+                  id="correction-stream"
+                  value={correctionStream}
+                  onChange={(e) => setCorrectionStream(e.target.value as "NATURAL" | "SOCIAL" | "")}
+                  required
+                  className="h-[40px] w-full rounded-md border border-[#d2c3a8] bg-white px-3 text-[14px] text-[#1a1a1a] outline-none focus:border-[#3f79b5] focus:ring-2 focus:ring-[#3f79b5]/25"
+                >
+                  <option value="" disabled>Select stream</option>
+                  <option value="NATURAL">Natural</option>
+                  <option value="SOCIAL">Social</option>
+                </select>
               </div>
               <div>
                 <label htmlFor="correction-first-name" className="mb-1.5 block text-[12px] font-semibold text-[#3a3a3a]">
@@ -631,6 +685,36 @@ export default function AdmissionDetailClient({
           ) : null}
         </div>
       </div>
+
+      {(data.current_status ?? "").toUpperCase() === "ENROLLED" ? (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-100 bg-[#fafbfc] px-8 py-4">
+            <h2 className="text-[15px] font-bold text-[#2a66a7]">Enrollment</h2>
+            <p className="mt-1 text-[12px] text-[#5a5a5a]">
+              You are enrolled. This is your university student ID.
+            </p>
+          </div>
+          <div className="px-8 py-4">
+            {enrollmentLoading ? (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">Loading enrollment…</p>
+            ) : enrollment ? (
+              <>
+                <DetailRow label="University ID">
+                  <span className="font-mono text-[14px] font-semibold text-[#1a1a1a]">
+                    {enrollment.university_id}
+                  </span>
+                </DetailRow>
+                <DetailRow label="Department">{enrollment.department ?? "—"}</DetailRow>
+                <DetailRow label="Enrollment term">{enrollment.enrollment_term ?? "—"}</DetailRow>
+              </>
+            ) : (
+              <p className="mt-2 text-[13px] text-[#5a5a5a]">
+                Enrollment record is being prepared. Check back shortly.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {extra ? (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

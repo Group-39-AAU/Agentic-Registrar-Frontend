@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
+  deleteAllScores,
   describeIncomplete,
   fetchBreakdown,
+  fetchTerms,
   formatLetter,
   getOrCreateBatch,
   justifyBatch,
@@ -21,6 +23,13 @@ import {
   type GradeBatch,
   type GradeBatchSubmitResponse,
 } from "@/lib/gradingApi";
+import {
+  DEMO_FILL_MODES,
+  buildDemoScores,
+  modeHint,
+  modeLabel,
+  type DemoFillMode,
+} from "@/lib/demoFill";
 
 type ScoresMap = Record<string, Record<string, string>>; // student_id -> component_id -> string
 
@@ -42,6 +51,133 @@ function StatusPill({ status }: { status: GradeBatch["status"] }) {
     >
       {status}
     </span>
+  );
+}
+
+function formatFlagType(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function FlagCard({ flag }: { flag: Record<string, unknown> }) {
+  const type = typeof flag.type === "string" ? flag.type : null;
+  const severityRaw =
+    typeof flag.severity === "string" ? flag.severity.toUpperCase() : null;
+  const message = typeof flag.message === "string" ? flag.message : null;
+  const affected = Array.isArray(flag.affected_students)
+    ? (flag.affected_students as unknown[])
+    : [];
+
+  const knownKeys = new Set(["type", "severity", "message", "affected_students"]);
+  const extras = Object.entries(flag).filter(([k]) => !knownKeys.has(k));
+
+  const severityStyle = (() => {
+    switch (severityRaw) {
+      case "HIGH":
+      case "CRITICAL":
+        return "border-[#f0bcbc] bg-[#fdebeb] text-[#a31a1a]";
+      case "MEDIUM":
+      case "WARN":
+      case "WARNING":
+        return "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]";
+      case "LOW":
+      case "INFO":
+        return "border-[#cfddec] bg-[#eef4fa] text-[#1f5b94]";
+      default:
+        return "border-gray-300 bg-gray-50 text-gray-700";
+    }
+  })();
+
+  return (
+    <div className="rounded-md border border-[#f0bcbc] bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {severityRaw ? (
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${severityStyle}`}
+          >
+            {severityRaw}
+          </span>
+        ) : null}
+        {type ? (
+          <span className="text-[12px] font-semibold text-[#1f2f40]">
+            {formatFlagType(type)}
+          </span>
+        ) : null}
+      </div>
+
+      {message ? (
+        <p className="mt-2 whitespace-pre-wrap text-[12.5px] text-[#1f2f40]">
+          {message}
+        </p>
+      ) : null}
+
+      {affected.length > 0 ? (
+        <div className="mt-2 rounded-md border border-gray-200 bg-[#fafbfc] p-2">
+          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+            Affected students ({affected.length})
+          </p>
+          <ul className="mt-1 space-y-1 text-[12px] text-[#3a3a3a]">
+            {affected.map((row, i) => {
+              if (row && typeof row === "object") {
+                const r = row as Record<string, unknown>;
+                const name =
+                  typeof r.full_name === "string"
+                    ? r.full_name
+                    : typeof r.student_number === "string"
+                      ? r.student_number
+                      : typeof r.name === "string"
+                        ? r.name
+                        : null;
+                const id =
+                  typeof r.student_number === "string"
+                    ? r.student_number
+                    : typeof r.student_id === "string"
+                      ? r.student_id
+                      : null;
+                if (name || id) {
+                  return (
+                    <li key={`affected-${i}`}>
+                      {name ? (
+                        <span className="font-semibold text-[#1f2f40]">
+                          {name}
+                        </span>
+                      ) : null}
+                      {name && id && id !== name ? (
+                        <span className="ml-2 font-mono text-[11px] text-[#5a5a5a]">
+                          {id}
+                        </span>
+                      ) : id ? (
+                        <span className="font-mono text-[11px]">{id}</span>
+                      ) : null}
+                    </li>
+                  );
+                }
+              }
+              return (
+                <li key={`affected-${i}`} className="font-mono text-[11px]">
+                  {String(row)}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {extras.length > 0 ? (
+        <details className="mt-2 text-[11.5px] text-[#5a5a5a]">
+          <summary className="cursor-pointer font-semibold uppercase tracking-wide">
+            More detail
+          </summary>
+          <pre className="mt-1 max-h-[180px] overflow-auto rounded bg-[#f8fafc] p-2 text-[11px] text-[#3a3a3a]">
+            {JSON.stringify(Object.fromEntries(extras), null, 2)}
+          </pre>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -94,6 +230,39 @@ export default function GradeEnterClient() {
   const [reopenBusy, setReopenBusy] = useState(false);
 
   const [reviews, setReviews] = useState<AgentReview[]>([]);
+
+  const [editingBreakdown, setEditingBreakdown] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+
+  const [termLabel, setTermLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!termId) {
+      setTermLabel(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const terms = await fetchTerms();
+        if (cancelled) return;
+        const t = terms.find((x) => x.id === termId);
+        if (t) {
+          const phase = t.phase
+            ? `${t.phase.charAt(0).toUpperCase()}${t.phase.slice(1).toLowerCase()}`
+            : "";
+          setTermLabel(phase ? `${t.term_name} · ${phase}` : t.term_name);
+        }
+      } catch {
+        // Fallback handled inline.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [termId]);
 
   const seedScoresFromBatch = useCallback((b: GradeBatch) => {
     const next: ScoresMap = {};
@@ -217,6 +386,7 @@ export default function GradeEnterClient() {
     try {
       await upsertBreakdown(sectionId, courseId, cleaned);
       setBreakdownExists(true);
+      setEditingBreakdown(false);
       await refreshBatchAndReviews(sectionId, courseId);
     } catch (e: unknown) {
       if (e instanceof ApiError) {
@@ -229,6 +399,53 @@ export default function GradeEnterClient() {
     }
   }
 
+  function seedDraftFromBreakdown(b: GradeBatch) {
+    setDraftComponents(
+      b.breakdown.components
+        .slice()
+        .sort((a, b) => a.order_index - b.order_index)
+        .map((c) => ({
+          name: c.name,
+          weight: String(c.weight),
+          max_score: String(c.max_score),
+        })),
+    );
+  }
+
+  function startEditBreakdown() {
+    if (!batch) return;
+    setBreakdownError(null);
+    seedDraftFromBreakdown(batch);
+    setEditingBreakdown(true);
+  }
+
+  function cancelEditBreakdown() {
+    setBreakdownError(null);
+    setEditingBreakdown(false);
+  }
+
+  async function doResetScores() {
+    if (!batch) return;
+    setConfirmResetOpen(false);
+    setResetError(null);
+    setResetBusy(true);
+    try {
+      const next = await deleteAllScores(batch.id);
+      setBatch(next);
+      seedScoresFromBatch(next);
+      setScoreSaveError(null);
+      setScoreSaveMsg(null);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setResetError(e.message ?? "Could not reset scores.");
+      } else {
+        setResetError("Could not reset scores.");
+      }
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   function setCell(studentId: string, componentId: string, value: string) {
     setScoreSaveMsg(null);
     setScores((prev) => {
@@ -236,6 +453,21 @@ export default function GradeEnterClient() {
       row[componentId] = value;
       return { ...prev, [studentId]: row };
     });
+  }
+
+  function applyDemoFill(mode: DemoFillMode) {
+    if (!batch) return;
+    const { scores: next, note } = buildDemoScores(
+      mode,
+      batch.rows.map((r) => ({ student_id: r.student_id })),
+      batch.breakdown.components.map((c) => ({
+        id: c.id,
+        max_score: c.max_score,
+      })),
+    );
+    setScores(next);
+    setScoreSaveError(null);
+    setScoreSaveMsg(`${note} (staged locally — click "Save scores" to persist)`);
   }
 
   async function saveAllScores() {
@@ -390,7 +622,10 @@ export default function GradeEnterClient() {
         </Link>
         {termId ? (
           <p className="text-[11px] text-[#5a5a5a]">
-            Term <span className="font-mono">{termId.slice(0, 8)}…</span>
+            Term{" "}
+            <span className="font-semibold text-[#1f2f40]">
+              {termLabel ?? `${termId.slice(0, 8)}…`}
+            </span>
           </p>
         ) : null}
       </div>
@@ -445,34 +680,89 @@ export default function GradeEnterClient() {
             ) : null}
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[14px] font-bold text-[#1f2f40]">
-                Assessment breakdown
-              </h2>
-              <span className="text-[11px] text-[#5a5a5a]">
-                {batch.breakdown.locked_at
-                  ? "Locked — scores already entered"
-                  : "Unlocked"}
-              </span>
+          {editingBreakdown ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12px] text-[#5a5a5a]">
+                  Editing the breakdown bumps its version. Cancel to keep the
+                  existing one.
+                </p>
+                <button
+                  type="button"
+                  onClick={cancelEditBreakdown}
+                  className="h-[32px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+                >
+                  Cancel edit
+                </button>
+              </div>
+              <BreakdownEditor
+                rows={draftComponents}
+                totalWeight={breakdownDraftSum}
+                busy={breakdownBusy}
+                error={breakdownError}
+                onAdd={addComponentRow}
+                onRemove={removeComponentRow}
+                onChange={updateComponentRow}
+                onSave={saveBreakdown}
+              />
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {batch.breakdown.components
-                .slice()
-                .sort((a, b) => a.order_index - b.order_index)
-                .map((c) => (
-                  <div
-                    key={c.id}
-                    className="rounded-md border border-gray-200 bg-[#fafbfc] px-3 py-2 text-[12.5px]"
-                  >
-                    <p className="font-semibold text-[#1f2f40]">{c.name}</p>
-                    <p className="mt-0.5 text-[11px] text-[#5a5a5a]">
-                      weight {c.weight} · out of {c.max_score}
-                    </p>
-                  </div>
-                ))}
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[14px] font-bold text-[#1f2f40]">
+                  Assessment breakdown
+                </h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#5a5a5a]">
+                    {batch.breakdown.locked_at
+                      ? "Locked — scores already entered"
+                      : "Unlocked"}
+                  </span>
+                  {isEditable && !batch.breakdown.locked_at ? (
+                    <button
+                      type="button"
+                      onClick={startEditBreakdown}
+                      className="h-[28px] rounded-md border border-[#9bb0cc] bg-white px-2.5 text-[11.5px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+                    >
+                      Edit breakdown
+                    </button>
+                  ) : null}
+                  {isEditable && batch.breakdown.locked_at ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmResetOpen(true)}
+                      disabled={resetBusy}
+                      title="Wipes every entered score and unlocks the breakdown for editing."
+                      className="h-[28px] rounded-md border border-[#e8acac] bg-white px-2.5 text-[11.5px] font-semibold text-[#a31a1a] hover:bg-[#fdebeb] disabled:opacity-60"
+                    >
+                      {resetBusy ? "Resetting…" : "Reset scores & unlock"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {resetError ? (
+                <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                  {resetError}
+                </p>
+              ) : null}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {batch.breakdown.components
+                  .slice()
+                  .sort((a, b) => a.order_index - b.order_index)
+                  .map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded-md border border-gray-200 bg-[#fafbfc] px-3 py-2 text-[12.5px]"
+                    >
+                      <p className="font-semibold text-[#1f2f40]">{c.name}</p>
+                      <p className="mt-0.5 text-[11px] text-[#5a5a5a]">
+                        weight {c.weight} · out of {c.max_score}
+                      </p>
+                    </div>
+                  ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <ScoreMatrix
             batch={batch}
@@ -497,6 +787,43 @@ export default function GradeEnterClient() {
             <p className="rounded-md border border-[#cae6cf] bg-[#ecf8ef] px-3 py-2 text-[12px] text-[#1f7a3a]">
               {scoreSaveMsg}
             </p>
+          ) : null}
+
+          {isEditable ? (
+            <div className="rounded-xl border border-dashed border-[#cfddec] bg-[#f6f9fc] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[12.5px] font-semibold text-[#1f2f40]">
+                    Demo auto-fill
+                    <span className="ml-2 rounded-full bg-[#fff3d4] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a5a00]">
+                      demo only
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-[11.5px] text-[#5a5a5a]">
+                    Stages a full score matrix locally so you can show the
+                    monitoring agent react to different patterns. Nothing is
+                    saved until you click <em>Save scores</em>.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {DEMO_FILL_MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => applyDemoFill(m)}
+                    title={modeHint(m)}
+                    className={`h-[30px] rounded-md border px-3 text-[11.5px] font-semibold transition-colors ${
+                      m === "clear"
+                        ? "border-[#e8acac] bg-white text-[#a31a1a] hover:bg-[#fdebeb]"
+                        : "border-[#9bb0cc] bg-white text-[#2f76b7] hover:bg-[#eef4ff]"
+                    }`}
+                  >
+                    {modeLabel(m)}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -570,15 +897,13 @@ export default function GradeEnterClient() {
               ) : null}
               {submitResult.agent_flags.length > 0 ? (
                 <div>
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#a31a1a]">
-                    Flags
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#a31a1a]">
+                    Flags ({submitResult.agent_flags.length})
                   </p>
-                  <ul className="list-disc space-y-1 pl-4 text-[12px] text-[#3a3a3a]">
+                  <ul className="space-y-2">
                     {submitResult.agent_flags.map((f, i) => (
                       <li key={`flag-${i}`}>
-                        <code className="break-all text-[11.5px] text-[#1f2f40]">
-                          {JSON.stringify(f)}
-                        </code>
+                        <FlagCard flag={f} />
                       </li>
                     ))}
                   </ul>
@@ -675,6 +1000,20 @@ export default function GradeEnterClient() {
                         {r.llm_reasoning}
                       </p>
                     ) : null}
+                    {r.flags && r.flags.length > 0 ? (
+                      <div className="mt-3">
+                        <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-[#a31a1a]">
+                          Flags ({r.flags.length})
+                        </p>
+                        <ul className="space-y-2">
+                          {r.flags.map((f, i) => (
+                            <li key={`review-${r.id}-flag-${i}`}>
+                              <FlagCard flag={f} />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -696,6 +1035,82 @@ export default function GradeEnterClient() {
           Go to login
         </button>
       ) : null}
+
+      {confirmResetOpen ? (
+        <ConfirmDialog
+          title="Reset scores & unlock breakdown?"
+          message="This wipes every score saved on this batch and unlocks the breakdown so you can change components. The batch stays in DRAFT."
+          confirmLabel={resetBusy ? "Resetting…" : "Reset & unlock"}
+          confirmTone="danger"
+          busy={resetBusy}
+          onCancel={() => setConfirmResetOpen(false)}
+          onConfirm={() => void doResetScores()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  confirmTone = "primary",
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmTone?: "primary" | "danger";
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const confirmClasses =
+    confirmTone === "danger"
+      ? "bg-[#a31a1a] hover:bg-[#891414] text-white"
+      : "bg-[#3f79b5] hover:bg-[#356e9f] text-white";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-[420px] rounded-xl border border-gray-200 bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="confirm-dialog-title"
+          className="text-[15px] font-bold text-[#1f2f40]"
+        >
+          {title}
+        </h2>
+        <p className="mt-2 text-[12.5px] text-[#3a3a3a]">{message}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="h-[34px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[12.5px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className={`h-[34px] rounded-md px-3 text-[12.5px] font-semibold disabled:opacity-60 ${confirmClasses}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

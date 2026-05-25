@@ -1,7 +1,8 @@
 "use client";
 
 import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
-import { useEffect, useMemo, useState } from "react";
+import Pagination from "@/components/Pagination";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** Matches GET /api/v1/undergraduate/enrollment/list/all paginated body */
 type EnrollmentRow = {
@@ -13,7 +14,6 @@ type EnrollmentRow = {
   university_id?: string;
   program_id?: string;
   department?: string;
-  section?: string;
   enrollment_term?: string;
   created_at?: string;
 };
@@ -48,6 +48,9 @@ export default function EnrollmentPage() {
   const [terms, setTerms] = useState<AdmissionTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);
   const [selectedTermId, setSelectedTermId] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [hasListed, setHasListed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +98,35 @@ export default function EnrollmentPage() {
       cancelled = true;
     };
   }, []);
+
+  const fetchEnrollmentList = useCallback(
+    (targetPage: number, targetPageSize: number) => {
+      if (!selectedTermId) return;
+      const params = new URLSearchParams({
+        term_id: selectedTermId,
+        page: String(targetPage),
+        page_size: String(targetPageSize),
+      });
+      callApi(
+        setListResult,
+        `/api/v1/undergraduate/enrollment/list/all?${params.toString()}`,
+        "GET",
+      );
+    },
+    [selectedTermId],
+  );
+
+  // Reset to page 1 when the term or page size changes. Refetch only
+  // if the user has already opened the list (avoids a stray request
+  // before they click "List Enrollments").
+  useEffect(() => {
+    setPage(1);
+  }, [selectedTermId, pageSize]);
+
+  useEffect(() => {
+    if (!hasListed || !selectedTermId) return;
+    fetchEnrollmentList(page, pageSize);
+  }, [hasListed, page, pageSize, selectedTermId, fetchEnrollmentList]);
 
   const enrollmentList = useMemo((): EnrollmentListPayload => {
     const data = listResult.data;
@@ -158,13 +190,11 @@ export default function EnrollmentPage() {
         <button
           type="button"
           disabled={!selectedTermId}
-          onClick={() =>
-            callApi(
-              setListResult,
-              `/api/v1/undergraduate/enrollment/list/all?term_id=${encodeURIComponent(selectedTermId)}`,
-              "GET"
-            )
-          }
+          onClick={() => {
+            setHasListed(true);
+            setPage(1);
+            fetchEnrollmentList(1, pageSize);
+          }}
           className="aau-button-secondary inline-flex h-[38px] items-center rounded-md px-4 text-[13px] font-semibold tracking-wide text-[#2f76b7] disabled:opacity-60"
         >
           List Enrollments
@@ -218,18 +248,15 @@ export default function EnrollmentPage() {
             <div className="space-y-2">
               <p className="text-[12px] text-[#5a5a5a]">
                 Total: <span className="font-semibold text-[#2f76b7]">{enrollmentList.total}</span>
-                {" · "}
-                Page <span className="font-semibold text-[#2f76b7]">{enrollmentList.page}</span>
-                {" · "}
-                Page size <span className="font-semibold text-[#2f76b7]">{enrollmentList.page_size}</span>
               </p>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <div className="overflow-x-auto">
                 <table className="w-full min-w-[1400px] border-collapse text-left text-[13px]">
                   <thead>
                     <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                      <th className="px-4 py-3">Enrollment ID</th>
                       <th className="px-4 py-3">Student</th>
                       <th className="px-4 py-3">Department</th>
-                      <th className="px-4 py-3">Section</th>
                       <th className="px-4 py-3">Enrollment term</th>
                       <th className="px-4 py-3">Created</th>
                     </tr>
@@ -240,11 +267,13 @@ export default function EnrollmentPage() {
                         key={String(row.id ?? row.application_id ?? index)}
                         className="border-b border-gray-100"
                       >
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-[12.5px] font-semibold text-[#2f76b7]">
+                          {row.university_id ?? "—"}
+                        </td>
                         <td className="max-w-[220px] px-4 py-3 font-medium text-[#1a1a1a]">
                           {row.student_full_name ?? "—"}
                         </td>
                         <td className="max-w-[180px] px-4 py-3">{row.department ?? "—"}</td>
-                        <td className="px-4 py-3">{row.section ?? "—"}</td>
                         <td className="px-4 py-3">{row.enrollment_term ?? "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-[12px] text-[#5a5a5a]">
                           {row.created_at
@@ -258,6 +287,15 @@ export default function EnrollmentPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                <Pagination
+                  page={page}
+                  pageSize={pageSize}
+                  total={enrollmentList.total}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                  itemLabel="enrollments"
+                />
               </div>
             </div>
           )}

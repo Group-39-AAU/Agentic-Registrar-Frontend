@@ -6,6 +6,7 @@ import { useState } from "react";
 
 const GRADING_HREF = "/officer/grading";
 const STANDING_HREF = "/officer/standing";
+const SCHEDULING_HREF = "/officer";
 
 function AAULogoSmall() {
   return (
@@ -35,6 +36,11 @@ export default function AdminTopBar() {
 
   const gradingActive = pathname.startsWith(GRADING_HREF);
   const standingActive = pathname.startsWith(STANDING_HREF);
+  // Match /officer and /officer/sections/* but NOT /officer/grading or /officer/standing.
+  const schedulingActive =
+    (pathname === SCHEDULING_HREF || pathname.startsWith("/officer/sections")) &&
+    !gradingActive &&
+    !standingActive;
 
   function handleLogout() {
     localStorage.removeItem("admin_dashboard_logged_in");
@@ -45,7 +51,7 @@ export default function AdminTopBar() {
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-gray-200/80 bg-white/90 shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_4px_16px_-12px_rgba(15,23,42,0.18)] backdrop-blur-xl">
       <div className="mx-auto flex h-[64px] w-full max-w-[1180px] items-center px-5">
-        <Link href={GRADING_HREF} aria-label="Grade authorisation">
+        <Link href={SCHEDULING_HREF} aria-label="Scheduling">
           <AAULogoSmall />
         </Link>
 
@@ -55,6 +61,22 @@ export default function AdminTopBar() {
 
         {/* Desktop nav */}
         <nav className="ml-auto hidden items-center gap-1 text-[11px] font-semibold tracking-[0.08em] text-[#384457] md:flex">
+          <Link
+            href={SCHEDULING_HREF}
+            className={`relative inline-flex items-center rounded-md px-3 py-2 uppercase transition-colors ${
+              schedulingActive
+                ? "text-[#2f76b7]"
+                : "hover:bg-[#2f76b7]/[0.06] hover:text-[#2f76b7]"
+            }`}
+          >
+            Scheduling
+            {schedulingActive ? (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-2 -bottom-[18px] h-[2px] rounded-t bg-[linear-gradient(90deg,transparent,#2f76b7,transparent)]"
+              />
+            ) : null}
+          </Link>
           <Link
             href={GRADING_HREF}
             className={`relative inline-flex items-center rounded-md px-3 py-2 uppercase transition-colors ${
@@ -131,9 +153,20 @@ export default function AdminTopBar() {
       >
         <nav className="flex flex-col px-4 py-2">
           <Link
-            href={GRADING_HREF}
+            href={SCHEDULING_HREF}
             onClick={() => setMobileOpen(false)}
             className={`rounded-md px-3 py-2.5 text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors ${
+              schedulingActive
+                ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
+                : "text-[#384457] hover:bg-black/[0.03]"
+            }`}
+          >
+            Scheduling
+          </Link>
+          <Link
+            href={GRADING_HREF}
+            onClick={() => setMobileOpen(false)}
+            className={`mt-1 rounded-md px-3 py-2.5 text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors ${
               gradingActive
                 ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
                 : "text-[#384457] hover:bg-black/[0.03]"
