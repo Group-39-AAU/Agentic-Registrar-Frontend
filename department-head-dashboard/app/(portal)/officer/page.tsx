@@ -13,14 +13,6 @@ type CourseTerm = {
   is_open?: boolean;
 };
 
-type ProgramItem = {
-  id: string;
-  code: string;
-  name: string;
-  department?: string;
-  stream?: string;
-};
-
 type AllocationResponse = {
   term_id?: string;
   department?: string;
@@ -38,6 +30,16 @@ type ScheduleResponse = {
   sections?: unknown[];
   conflict_count?: number;
   conflict_ids?: string[];
+};
+
+type DepartmentTermOverview = {
+  term_id: string;
+  department: string;
+  sections: unknown[];
+  students_placed_count: number;
+  slots_count: number;
+  has_sections: boolean;
+  has_slots: boolean;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -261,13 +263,12 @@ export default function OfficerPage() {
   const [academicYear, setAcademicYear] = useState("");
   const [phase, setPhase] = useState("");
 
-  const [programs, setPrograms] = useState<ProgramItem[]>([]);
-  const [programsLoading, setProgramsLoading] = useState(false);
-  const [programsError, setProgramsError] = useState<string | null>(null);
-  const [programId, setProgramId] = useState("");
-
   const [allocation, setAllocation] = useState<RequestState>(initialState);
   const [schedule, setSchedule] = useState<RequestState>(initialState);
+
+  const [overview, setOverview] = useState<DepartmentTermOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -281,39 +282,21 @@ export default function OfficerPage() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error("Could not load course terms.");
         const rows = Array.isArray(data) ? (data as CourseTerm[]) : [];
-        if (!cancelled) setTerms(rows);
+        if (!cancelled) {
+          setTerms(rows);
+          // Default to the currently-open term so the DH lands on
+          // the active academic year + semester without picking.
+          const open = rows.find((t) => t.is_open) ?? null;
+          if (open) {
+            setAcademicYear(open.term_name);
+            setPhase(open.phase);
+          }
+        }
       } catch (err) {
         if (!cancelled)
           setTermsError(err instanceof Error ? err.message : "Could not load course terms.");
       } finally {
         if (!cancelled) setTermsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setProgramsLoading(true);
-    setProgramsError(null);
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/v1/programs`, { headers: authHeaders() });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error("Could not load programs.");
-        const items: ProgramItem[] = Array.isArray(data)
-          ? (data as ProgramItem[])
-          : data && typeof data === "object" && Array.isArray((data as { items?: unknown[] }).items)
-            ? ((data as { items: ProgramItem[] }).items)
-            : [];
-        if (!cancelled) setPrograms(items.filter((p) => p && p.id));
-      } catch (err) {
-        if (!cancelled)
-          setProgramsError(err instanceof Error ? err.message : "Could not load programs.");
-      } finally {
-        if (!cancelled) setProgramsLoading(false);
       }
     })();
     return () => {
@@ -342,14 +325,56 @@ export default function OfficerPage() {
     return (termsByYear.get(academicYear) ?? []).find((t) => t.phase === phase) ?? null;
   }, [academicYear, phase, termsByYear]);
 
-  const selectedProgram = useMemo(
-    () => programs.find((p) => p.id === programId) ?? null,
-    [programs, programId],
-  );
-
   const step1Done = !!selectedTerm;
-  const step2Done = !!selectedProgram;
-  const readyToRun = step1Done && step2Done;
+  const readyToRun = step1Done;
+
+  async function fetchOverview(termId: string): Promise<DepartmentTermOverview | null> {
+    setOverviewLoading(true);
+    setOverviewError(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/courses/officer/sections/overview?term_id=${encodeURIComponent(termId)}`,
+        { headers: authHeaders() },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          data && typeof data === "object" && "detail" in data
+            ? String((data as { detail?: unknown }).detail ?? "")
+            : "";
+        throw new Error(detail || "Could not load department overview.");
+      }
+      const ov = data as DepartmentTermOverview;
+      setOverview(ov);
+      return ov;
+    } catch (err) {
+      setOverview(null);
+      setOverviewError(
+        err instanceof Error ? err.message : "Could not load department overview.",
+      );
+      return null;
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedTerm) {
+      setOverview(null);
+      setOverviewError(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const ov = await fetchOverview(selectedTerm.id);
+      if (cancelled) return;
+      void ov;
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTerm?.id]);
 
   function handleAcademicYearChange(v: string) {
     setAcademicYear(v);
@@ -364,38 +389,35 @@ export default function OfficerPage() {
     setSchedule(initialState);
   }
 
-  function handleProgramChange(v: string) {
-    setProgramId(v);
-    setAllocation(initialState);
-    setSchedule(initialState);
+  async function runAllocation() {
+    if (!selectedTerm) return;
+    await callApi(setAllocation, "/api/v1/courses/officer/sections/allocate", "POST", {
+      term_id: selectedTerm.id,
+    });
+    await fetchOverview(selectedTerm.id);
   }
 
-  function runAllocation() {
-    if (!selectedTerm || !selectedProgram) return;
-    callApi(setAllocation, "/api/v1/courses/officer/sections/allocate", "POST", {
+  async function runSchedule() {
+    if (!selectedTerm) return;
+    await callApi(setSchedule, "/api/v1/courses/officer/schedule/generate", "POST", {
       term_id: selectedTerm.id,
-      program_id: selectedProgram.id,
     });
-  }
-
-  function runSchedule() {
-    if (!selectedTerm || !selectedProgram) return;
-    callApi(setSchedule, "/api/v1/courses/officer/schedule/generate", "POST", {
-      term_id: selectedTerm.id,
-      program_id: selectedProgram.id,
-    });
+    await fetchOverview(selectedTerm.id);
   }
 
   const allocationData = allocation.data as AllocationResponse | null;
   const scheduleData = schedule.data as ScheduleResponse | null;
 
+  const allocateDisabledByExisting = !!overview?.has_sections;
+  const generateDisabledByExisting = !!overview?.has_slots;
+  const generateBlockedNoSections = !!overview && !overview.has_sections;
+
   const contextQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (selectedTerm?.id) params.set("term_id", selectedTerm.id);
-    if (selectedProgram?.id) params.set("program_id", selectedProgram.id);
     const qs = params.toString();
     return qs ? `?${qs}` : "";
-  }, [selectedTerm, selectedProgram]);
+  }, [selectedTerm]);
 
   return (
     <div className="space-y-6">
@@ -411,147 +433,91 @@ export default function OfficerPage() {
             Sections & schedule operations
           </h1>
           <p className="mt-2 max-w-[640px] text-[14px] leading-relaxed text-[#5a5a5a]">
-            Pick the academic term and program, then run section allocation or schedule
-            generation. Each run is independent — results appear below the action.
+            Pick the academic term, then run section allocation or schedule
+            generation for your department. Each run is independent — results
+            appear below the action.
           </p>
         </div>
       </div>
 
-      {/* Step 1 + Step 2 in a single setup card */}
-      <Section title="Setup" subtitle="Choose the term and program these operations will run against">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {/* Step 1 — Term */}
-          <div className="rounded-xl border border-gray-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcfe_100%)] p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <StepBadge index={1} active={!step1Done} done={step1Done} />
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5a5a5a]">
-                  Step 1
-                </p>
-                <p className="text-[14px] font-semibold text-[#1f2f40]">Academic term</p>
-              </div>
-            </div>
-
-            {termsError ? (
-              <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-                {termsError}
+      {/* Setup card */}
+      <Section title="Setup" subtitle="Choose the term these operations will run against — your department is used automatically.">
+        <div className="rounded-xl border border-gray-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcfe_100%)] p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <StepBadge index={1} active={!step1Done} done={step1Done} />
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5a5a5a]">
+                Step 1
               </p>
-            ) : null}
-
-            <label className="mb-1 block text-[12px] font-semibold text-[#3a3a3a]">
-              Academic year
-            </label>
-            <select
-              value={academicYear}
-              onChange={(e) => handleAcademicYearChange(e.target.value)}
-              disabled={termsLoading || yearOptions.length === 0}
-              className="mb-4 h-[40px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
-            >
-              <option value="">
-                {termsLoading
-                  ? "Loading terms…"
-                  : yearOptions.length === 0
-                    ? "No terms available"
-                    : "Select academic year"}
-              </option>
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-
-            <label className="mb-1 block text-[12px] font-semibold text-[#3a3a3a]">
-              Calendar semester
-            </label>
-            <select
-              value={phase}
-              onChange={(e) => handlePhaseChange(e.target.value)}
-              disabled={!academicYear || phaseOptions.length === 0}
-              className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
-            >
-              <option value="">
-                {!academicYear
-                  ? "Pick an academic year first"
-                  : phaseOptions.length === 0
-                    ? "No semesters for this year"
-                    : "Select calendar semester"}
-              </option>
-              {phaseOptions.map((p) => (
-                <option key={p.id} value={p.phase}>
-                  {formatPhase(p.phase)}
-                  {p.is_open ? " · open" : ""}
-                </option>
-              ))}
-            </select>
-
-            {selectedTerm ? (
-              <div className="mt-4 rounded-md border border-[#cfddec] bg-[#eef4fa] px-3 py-2 text-[12px] text-[#1f5b94]">
-                <span className="font-semibold">Resolved term:</span>{" "}
-                {selectedTerm.term_name} · {formatPhase(selectedTerm.phase)}
-              </div>
-            ) : null}
+              <p className="text-[14px] font-semibold text-[#1f2f40]">Academic term</p>
+            </div>
           </div>
 
-          {/* Step 2 — Program */}
-          <div className="rounded-xl border border-gray-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcfe_100%)] p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <StepBadge index={2} active={step1Done && !step2Done} done={step2Done} />
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5a5a5a]">
-                  Step 2
-                </p>
-                <p className="text-[14px] font-semibold text-[#1f2f40]">Program</p>
-              </div>
+          {termsError ? (
+            <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {termsError}
+            </p>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-[#3a3a3a]">
+                Academic year
+              </label>
+              <select
+                value={academicYear}
+                onChange={(e) => handleAcademicYearChange(e.target.value)}
+                disabled={termsLoading || yearOptions.length === 0}
+                className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
+              >
+                <option value="">
+                  {termsLoading
+                    ? "Loading terms…"
+                    : yearOptions.length === 0
+                      ? "No terms available"
+                      : "Select academic year"}
+                </option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {programsError ? (
-              <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-                {programsError}
-              </p>
-            ) : null}
-
-            <label className="mb-1 block text-[12px] font-semibold text-[#3a3a3a]">
-              Program
-            </label>
-            <select
-              value={programId}
-              onChange={(e) => handleProgramChange(e.target.value)}
-              disabled={programsLoading || programs.length === 0}
-              className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
-            >
-              <option value="">
-                {programsLoading
-                  ? "Loading programs…"
-                  : programs.length === 0
-                    ? "No programs available"
-                    : "Select a program"}
-              </option>
-              {programs.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code ? `${p.code} · ` : ""}
-                  {p.name}
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-[#3a3a3a]">
+                Calendar semester
+              </label>
+              <select
+                value={phase}
+                onChange={(e) => handlePhaseChange(e.target.value)}
+                disabled={!academicYear || phaseOptions.length === 0}
+                className="h-[40px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
+              >
+                <option value="">
+                  {!academicYear
+                    ? "Pick an academic year first"
+                    : phaseOptions.length === 0
+                      ? "No semesters for this year"
+                      : "Select calendar semester"}
                 </option>
-              ))}
-            </select>
-
-            {selectedProgram ? (
-              <div className="mt-4 rounded-md border border-[#cfddec] bg-[#eef4fa] px-3 py-2 text-[12px] text-[#1f5b94]">
-                <p>
-                  <span className="font-semibold">{selectedProgram.code}</span>
-                  {" — "}
-                  {selectedProgram.name}
-                </p>
-                {selectedProgram.department || selectedProgram.stream ? (
-                  <p className="mt-0.5 text-[11px] opacity-80">
-                    {selectedProgram.department ?? ""}
-                    {selectedProgram.department && selectedProgram.stream ? " · " : ""}
-                    {selectedProgram.stream ?? ""}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+                {phaseOptions.map((p) => (
+                  <option key={p.id} value={p.phase}>
+                    {formatPhase(p.phase)}
+                    {p.is_open ? " · open" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {selectedTerm ? (
+            <div className="mt-4 rounded-md border border-[#cfddec] bg-[#eef4fa] px-3 py-2 text-[12px] text-[#1f5b94]">
+              <span className="font-semibold">Resolved term:</span>{" "}
+              {selectedTerm.term_name} · {formatPhase(selectedTerm.phase)}
+            </div>
+          ) : null}
         </div>
       </Section>
 
@@ -577,14 +543,14 @@ export default function OfficerPage() {
             <div>
               <h3 className="text-[16px] font-bold text-[#1f2f40]">Section allocation</h3>
               <p className="mt-0.5 text-[12.5px] text-[#5a5a5a]">
-                Places students from the selected program into sections for the chosen term.
+                Places students from your department into sections for the chosen term.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            disabled={!readyToRun || allocation.loading}
+            disabled={!readyToRun || allocation.loading || allocateDisabledByExisting}
             onClick={runAllocation}
             className="aau-button-primary mb-4 inline-flex h-[42px] items-center justify-center rounded-md px-5 text-[13px] font-semibold tracking-wide text-white"
           >
@@ -597,37 +563,39 @@ export default function OfficerPage() {
             </p>
           ) : null}
 
-          {allocationData && !allocation.error ? (
+          {overviewLoading && !overview ? (
+            <p className="text-[12px] italic text-[#5a5a5a]">Loading sections…</p>
+          ) : overview && overview.has_sections ? (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MetricCard
-                  label="Sections created"
-                  value={(allocationData.sections_created ?? []).length}
+                  label="Sections"
+                  value={overview.sections.length}
                   tone="brand"
                 />
                 <MetricCard
                   label="Students placed"
-                  value={allocationData.students_placed_count ?? (allocationData.students_placed ?? []).length}
+                  value={overview.students_placed_count}
                   tone="success"
                 />
-                <MetricCard
-                  label="Failed"
-                  value={(allocationData.failed ?? []).length}
-                  tone={(allocationData.failed ?? []).length > 0 ? "danger" : "neutral"}
-                />
+                {allocationData && (allocationData.failed ?? []).length > 0 ? (
+                  <MetricCard
+                    label="Failed (last run)"
+                    value={(allocationData.failed ?? []).length}
+                    tone="danger"
+                  />
+                ) : null}
               </div>
-              {allocationData.department ? (
+              {overview.department ? (
                 <p className="text-[12px] text-[#5a5a5a]">
                   Department:{" "}
-                  <span className="font-semibold text-[#1f2f40]">
-                    {allocationData.department}
-                  </span>
+                  <span className="font-semibold text-[#1f2f40]">{overview.department}</span>
                 </p>
               ) : null}
-              {(allocationData.failed ?? []).length > 0 ? (
+              {allocationData && (allocationData.failed ?? []).length > 0 ? (
                 <details className="rounded-md border border-[#f0bcbc] bg-[#fdebeb] px-3 py-2 text-[12px] text-[#7a1818]">
                   <summary className="cursor-pointer font-semibold">
-                    View failed entries
+                    View failed entries from the last run
                   </summary>
                   <pre className="mt-2 max-h-[200px] overflow-auto rounded bg-white/60 p-2 text-[11px] text-[#3a3a3a]">
                     {JSON.stringify(allocationData.failed, null, 2)}
@@ -636,19 +604,17 @@ export default function OfficerPage() {
               ) : null}
 
               <SectionGrid
-                sections={allocationData.sections_created ?? []}
+                sections={overview.sections}
                 contextQuery={contextQuery}
-                emptyLabel="No sections were created in this run."
+                emptyLabel="No sections have been allocated yet for this term."
                 target="students"
               />
             </div>
-          ) : null}
-
-          {!allocation.loading && !allocation.error && !allocationData ? (
+          ) : !allocation.loading && !allocation.error ? (
             <p className="text-[12px] italic text-[#5a5a5a]">
               {readyToRun
-                ? "Ready when you are."
-                : "Pick a term and a program to enable this action."}
+                ? "No sections allocated yet — click the button to run allocation."
+                : "Pick a term to enable this action."}
             </p>
           ) : null}
         </section>
@@ -674,19 +640,30 @@ export default function OfficerPage() {
             <div>
               <h3 className="text-[16px] font-bold text-[#1f2f40]">Schedule generation</h3>
               <p className="mt-0.5 text-[12.5px] text-[#5a5a5a]">
-                Builds the timetable slots for sections in the chosen program and term.
+                Builds the timetable slots for sections in your department for the chosen term.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            disabled={!readyToRun || schedule.loading}
+            disabled={
+              !readyToRun
+              || schedule.loading
+              || generateDisabledByExisting
+              || generateBlockedNoSections
+            }
             onClick={runSchedule}
             className="aau-button-primary mb-4 inline-flex h-[42px] items-center justify-center rounded-md px-5 text-[13px] font-semibold tracking-wide text-white"
           >
             {schedule.loading ? "Generating schedule…" : "Generate schedule"}
           </button>
+
+          {generateBlockedNoSections && !generateDisabledByExisting ? (
+            <p className="mb-3 rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-[12px] text-[#8a5a00]">
+              Allocate sections first — there's nothing to schedule yet.
+            </p>
+          ) : null}
 
           {schedule.error ? (
             <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
@@ -694,41 +671,40 @@ export default function OfficerPage() {
             </p>
           ) : null}
 
-          {scheduleData && !schedule.error ? (
+          {overviewLoading && !overview ? (
+            <p className="text-[12px] italic text-[#5a5a5a]">Loading schedule…</p>
+          ) : overview && overview.has_slots ? (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MetricCard
                   label="Sections"
-                  value={scheduleData.section_count ?? (scheduleData.sections ?? []).length}
+                  value={overview.sections.length}
                   tone="brand"
                 />
                 <MetricCard
-                  label="Slots created"
-                  value={scheduleData.slots_created ?? 0}
+                  label="Slots"
+                  value={overview.slots_count}
                   tone="success"
                 />
-                <MetricCard
-                  label="Conflicts"
-                  value={scheduleData.conflict_count ?? (scheduleData.conflict_ids ?? []).length}
-                  tone={
-                    (scheduleData.conflict_count ?? (scheduleData.conflict_ids ?? []).length) > 0
-                      ? "warning"
-                      : "neutral"
-                  }
-                />
+                {scheduleData
+                  && (scheduleData.conflict_count ?? (scheduleData.conflict_ids ?? []).length) > 0 ? (
+                  <MetricCard
+                    label="Conflicts (last run)"
+                    value={scheduleData.conflict_count ?? (scheduleData.conflict_ids ?? []).length}
+                    tone="warning"
+                  />
+                ) : null}
               </div>
-              {scheduleData.department ? (
+              {overview.department ? (
                 <p className="text-[12px] text-[#5a5a5a]">
                   Department:{" "}
-                  <span className="font-semibold text-[#1f2f40]">
-                    {scheduleData.department}
-                  </span>
+                  <span className="font-semibold text-[#1f2f40]">{overview.department}</span>
                 </p>
               ) : null}
-              {scheduleData.conflict_ids && scheduleData.conflict_ids.length > 0 ? (
+              {scheduleData && scheduleData.conflict_ids && scheduleData.conflict_ids.length > 0 ? (
                 <details className="rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-[12px] text-[#8a5a00]">
                   <summary className="cursor-pointer font-semibold">
-                    Conflict IDs ({scheduleData.conflict_ids.length})
+                    Conflict IDs from the last run ({scheduleData.conflict_ids.length})
                   </summary>
                   <ul className="mt-2 max-h-[200px] space-y-1 overflow-auto">
                     {scheduleData.conflict_ids.map((cid) => (
@@ -741,19 +717,19 @@ export default function OfficerPage() {
               ) : null}
 
               <SectionGrid
-                sections={scheduleData.sections ?? []}
+                sections={overview.sections}
                 contextQuery={contextQuery}
-                emptyLabel="No sections were returned in this run."
+                emptyLabel="No schedule has been generated yet for this term."
                 target="schedule"
               />
             </div>
-          ) : null}
-
-          {!schedule.loading && !schedule.error && !scheduleData ? (
+          ) : !schedule.loading && !schedule.error ? (
             <p className="text-[12px] italic text-[#5a5a5a]">
-              {readyToRun
-                ? "Ready when you are."
-                : "Pick a term and a program to enable this action."}
+              {!readyToRun
+                ? "Pick a term to enable this action."
+                : generateBlockedNoSections
+                  ? "Allocate sections first — there's nothing to schedule yet."
+                  : "No schedule generated yet — click the button to build it."}
             </p>
           ) : null}
         </section>
