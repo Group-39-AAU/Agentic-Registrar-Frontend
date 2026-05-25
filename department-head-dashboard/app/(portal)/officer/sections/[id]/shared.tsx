@@ -55,6 +55,8 @@ export type ClassScheduleSlotRead = {
   start_time: string;
   end_time: string;
   instructor_id: string | null;
+  instructor_name: string | null;
+  instructor_staff_id: string | null;
   room: string | null;
   course_id: string | null;
   source: "cohort" | "addition" | null;
@@ -275,7 +277,19 @@ export function WeeklyGrid({ slots }: { slots: ClassScheduleSlotRead[] }) {
                             {slot.start_time.slice(0, 5)} – {slot.end_time.slice(0, 5)}
                           </p>
                         ) : null}
-                        {slot.room && height >= 80 ? (
+                        {height >= 80 ? (
+                          <p
+                            className="mt-0.5 truncate text-[10.5px] text-[#5a5a5a]"
+                            title={
+                              slot.instructor_name
+                                ? `${slot.instructor_name}${slot.instructor_staff_id ? ` · ${slot.instructor_staff_id}` : ""}`
+                                : "Instructor not assigned"
+                            }
+                          >
+                            {slot.instructor_name ?? "TBA"}
+                          </p>
+                        ) : null}
+                        {slot.room && height >= 100 ? (
                           <p className="mt-0.5 truncate text-[10.5px] text-[#5a5a5a]">
                             Room {slot.room}
                           </p>
