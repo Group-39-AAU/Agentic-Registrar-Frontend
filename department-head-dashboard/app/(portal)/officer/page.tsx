@@ -417,11 +417,14 @@ export default function OfficerPage() {
     await fetchOverview(selectedTerm.id);
   }
 
-  // "Regenerate" applies whenever there's already data from a previous
-  // run — labels and dialog copy soften for first runs so we don't
-  // scare an officer who hasn't created anything yet.
-  const hasAllocationResult = !!allocation.data && !allocation.error;
-  const hasScheduleResult = !!schedule.data && !schedule.error;
+  // "Regenerate" copy applies whenever the backend already has data
+  // for the selected (term, department) — either persisted (from any
+  // prior run, including past sessions) or from a successful run in
+  // this session before the overview refetch has settled.
+  const hasExistingAllocation =
+    !!overview?.has_sections || (!!allocation.data && !allocation.error);
+  const hasExistingSchedule =
+    !!overview?.has_slots || (!!schedule.data && !schedule.error);
 
   function confirmPendingAction() {
     const action = pendingAction;
@@ -433,8 +436,10 @@ export default function OfficerPage() {
   const allocationData = allocation.data as AllocationResponse | null;
   const scheduleData = schedule.data as ScheduleResponse | null;
 
-  const allocateDisabledByExisting = !!overview?.has_sections;
-  const generateDisabledByExisting = !!overview?.has_slots;
+  // Schedule generation truly cannot run without sections — keep this
+  // as a hard precondition. Existing-data checks no longer disable the
+  // buttons; they only flip the label to "Regenerate" and adjust the
+  // confirmation copy.
   const generateBlockedNoSections = !!overview && !overview.has_sections;
 
   const contextQuery = useMemo(() => {
@@ -575,13 +580,13 @@ export default function OfficerPage() {
 
           <button
             type="button"
-            disabled={!readyToRun || allocation.loading || allocateDisabledByExisting}
+            disabled={!readyToRun || allocation.loading}
             onClick={() => setPendingAction("allocation")}
             className="aau-button-primary mb-4 inline-flex h-[42px] items-center justify-center rounded-md px-5 text-[13px] font-semibold tracking-wide text-white"
           >
             {allocation.loading
               ? "Allocating sections…"
-              : hasAllocationResult
+              : hasExistingAllocation
                 ? "Regenerate sections"
                 : "Allocate sections"}
           </button>
@@ -679,7 +684,6 @@ export default function OfficerPage() {
             disabled={
               !readyToRun
               || schedule.loading
-              || generateDisabledByExisting
               || generateBlockedNoSections
             }
             onClick={() => setPendingAction("schedule")}
@@ -687,12 +691,12 @@ export default function OfficerPage() {
           >
             {schedule.loading
               ? "Generating schedule…"
-              : hasScheduleResult
+              : hasExistingSchedule
                 ? "Regenerate schedule"
                 : "Generate schedule"}
           </button>
 
-          {generateBlockedNoSections && !generateDisabledByExisting ? (
+          {generateBlockedNoSections ? (
             <p className="mb-3 rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-[12px] text-[#8a5a00]">
               Allocate sections first — there's nothing to schedule yet.
             </p>
@@ -771,7 +775,7 @@ export default function OfficerPage() {
       <ConfirmDialog
         open={pendingAction === "allocation"}
         title={
-          hasAllocationResult
+          hasExistingAllocation
             ? "Regenerate section allocation?"
             : "Run section allocation?"
         }
@@ -779,7 +783,7 @@ export default function OfficerPage() {
           <>
             <p>
               This will{" "}
-              {hasAllocationResult ? (
+              {hasExistingAllocation ? (
                 <>
                   <strong>wipe every existing section</strong> for{" "}
                 </>
@@ -791,7 +795,7 @@ export default function OfficerPage() {
                   ? `${selectedTerm.term_name} · ${formatPhase(selectedTerm.phase)}`
                   : "this term"}
               </strong>
-              {hasAllocationResult
+              {hasExistingAllocation
                 ? " and re-place every registered student into a fresh cohort."
                 : "."}
             </p>
@@ -800,7 +804,7 @@ export default function OfficerPage() {
             </p>
           </>
         }
-        confirmLabel={hasAllocationResult ? "Yes, regenerate" : "Yes, run it"}
+        confirmLabel={hasExistingAllocation ? "Yes, regenerate" : "Yes, run it"}
         onConfirm={confirmPendingAction}
         onCancel={() => setPendingAction(null)}
       />
@@ -808,7 +812,7 @@ export default function OfficerPage() {
       <ConfirmDialog
         open={pendingAction === "schedule"}
         title={
-          hasScheduleResult
+          hasExistingSchedule
             ? "Regenerate the schedule?"
             : "Generate the schedule?"
         }
@@ -816,7 +820,7 @@ export default function OfficerPage() {
           <>
             <p>
               This will{" "}
-              {hasScheduleResult ? (
+              {hasExistingSchedule ? (
                 <>
                   <strong>delete every existing class slot</strong> and rebuild
                   the timetable for{" "}
@@ -829,7 +833,7 @@ export default function OfficerPage() {
                   ? `${selectedTerm.term_name} · ${formatPhase(selectedTerm.phase)}`
                   : "this term"}
               </strong>
-              {hasScheduleResult
+              {hasExistingSchedule
                 ? ". Students' Add/Drop selections that point at deleted slots may need to be reviewed."
                 : "."}
             </p>
@@ -838,7 +842,7 @@ export default function OfficerPage() {
             </p>
           </>
         }
-        confirmLabel={hasScheduleResult ? "Yes, regenerate" : "Yes, generate"}
+        confirmLabel={hasExistingSchedule ? "Yes, regenerate" : "Yes, generate"}
         onConfirm={confirmPendingAction}
         onCancel={() => setPendingAction(null)}
       />
