@@ -67,6 +67,14 @@ export default function ReviewPage() {
   const [decisionSubmitting, setDecisionSubmitting] = useState(false);
   const [decisionFormError, setDecisionFormError] = useState<string | null>(null);
 
+  // Client-side pagination over the merged self-sponsored + government
+  // rows is now backend-driven — page/page_size flow straight through
+  // to /review/students and the server returns the slice already
+  // sorted by latest rank_position.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [serverTotal, setServerTotal] = useState(0);
+
   const loadStudents = useCallback(async () => {
     setStudents({ loading: true, error: null, data: null });
     try {
@@ -75,47 +83,43 @@ export default function ReviewPage() {
       if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
 
       const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-      const buildUrl = (sponsorshipType: "SELF_SPONSORED" | "GOVERNMENT") => {
-        const url = new URL(`${base}/api/v1/undergraduate/review/students`);
-        url.searchParams.set("sponsorship_type", sponsorshipType);
-        const ai = aiDecisionFilter.trim();
-        if (ai) url.searchParams.set("ai_recommended_decision", ai);
-        return url.toString();
-      };
+      const url = new URL(`${base}/api/v1/undergraduate/review/students`);
+      if (sponsorshipFilter !== "ALL") {
+        url.searchParams.set("sponsorship_type", sponsorshipFilter);
+      }
+      const ai = aiDecisionFilter.trim();
+      if (ai) url.searchParams.set("ai_recommended_decision", ai);
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("page_size", String(pageSize));
 
-      const [selfRes, govRes] = await Promise.all([
-        fetch(buildUrl("SELF_SPONSORED"), { headers }),
-        fetch(buildUrl("GOVERNMENT"), { headers }),
-      ]);
-      const selfData = await selfRes.json().catch(() => ({}));
-      const govData = await govRes.json().catch(() => ({}));
-
-      if (!selfRes.ok || !govRes.ok) {
+      const res = await fetch(url.toString(), { headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
         throw new Error("Could not load review queue.");
       }
-
-      const selfItems = Array.isArray(selfData)
-        ? selfData
-        : selfData && typeof selfData === "object" && Array.isArray((selfData as { items?: unknown[] }).items)
-          ? (selfData as { items: unknown[] }).items
+      const items = Array.isArray(data)
+        ? data
+        : data && typeof data === "object"
+            && Array.isArray((data as { items?: unknown[] }).items)
+          ? (data as { items: unknown[] }).items
           : [];
-      const govItems = Array.isArray(govData)
-        ? govData
-        : govData && typeof govData === "object" && Array.isArray((govData as { items?: unknown[] }).items)
-          ? (govData as { items: unknown[] }).items
-          : [];
+      const total =
+        data && typeof data === "object"
+          && typeof (data as { total?: unknown }).total === "number"
+          ? (data as { total: number }).total
+          : items.length;
 
-      const map = new Map<string, ReviewRow>();
-      [...selfItems, ...govItems].forEach((item) => {
-        if (!item || typeof item !== "object") return;
-        const r = item as ReviewRow;
-        const key = String(r.application_id ?? r.id ?? "");
-        if (!key) return;
-        if (!map.has(key)) map.set(key, r);
-      });
-      const list = Array.from(map.values());
+      const list = items
+        .filter((it): it is ReviewRow => !!it && typeof it === "object")
+        .map((it) => it as ReviewRow);
+
       setStudents({ loading: false, error: null, data: list });
-      setSelectedIds((prev) => prev.filter((id) => list.some((r) => String(r.application_id ?? r.id ?? "") === id)));
+      setServerTotal(total);
+      setSelectedIds((prev) =>
+        prev.filter((id) =>
+          list.some((r) => String(r.application_id ?? r.id ?? "") === id),
+        ),
+      );
     } catch (e) {
       setStudents({
         loading: false,
@@ -123,7 +127,7 @@ export default function ReviewPage() {
         data: null,
       });
     }
-  }, [aiDecisionFilter]);
+  }, [aiDecisionFilter, sponsorshipFilter, page, pageSize]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -131,32 +135,19 @@ export default function ReviewPage() {
     });
   }, [loadStudents]);
 
-  const allRows = useMemo(() => {
+  // The server already filters by sponsorship + sorts by rank and
+  // returns only the requested page slice, so the rendered rows ARE
+  // the page rows.
+  const pageRows = useMemo(() => {
     if (Array.isArray(students.data)) return students.data as ReviewRow[];
     return [];
   }, [students.data]);
 
-  const rows = useMemo(() => {
-    if (sponsorshipFilter === "ALL") return allRows;
-    return allRows.filter(
-      (r) => String(r.sponsorship_type ?? "").toUpperCase() === sponsorshipFilter
-    );
-  }, [allRows, sponsorshipFilter]);
-
-  // Client-side pagination over the merged self-sponsored + government
-  // rows. The backend doesn't paginate /review/students, so we slice
-  // locally; the count under the filters still reflects the full set.
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-
+  // Reset to page 1 whenever the filters change so the new query
+  // starts from the top of the (re-sorted) list.
   useEffect(() => {
     setPage(1);
-  }, [sponsorshipFilter, aiDecisionFilter, allRows.length, pageSize]);
-
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return rows.slice(start, start + pageSize);
-  }, [rows, page, pageSize]);
+  }, [sponsorshipFilter, aiDecisionFilter, pageSize]);
 
   const allIds = useMemo(
     () => pageRows.map((row) => String(row.application_id ?? row.id ?? "")).filter(Boolean),
@@ -288,11 +279,26 @@ export default function ReviewPage() {
         ) : null}
 
         <p className="mb-3 text-[13px] text-[#5a5a5a]">
-          Showing <span className="font-semibold text-[#2f76b7]">{rows.length}</span>
+          {pageRows.length > 0 ? (
+            <>
+              Showing{" "}
+              <span className="font-semibold text-[#2f76b7]">
+                {(page - 1) * pageSize + 1}–{(page - 1) * pageSize + pageRows.length}
+              </span>{" "}
+              of <span className="font-semibold text-[#2f76b7]">{serverTotal}</span>
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-[#2f76b7]">{serverTotal}</span> matching
+            </>
+          )}
           {sponsorshipFilter !== "ALL" ? (
             <>
               {" "}
-              of <span className="font-semibold text-[#2f76b7]">{allRows.length}</span> loaded
+              · Sponsorship:{" "}
+              <span className="font-semibold text-[#2f76b7]">
+                {sponsorshipFilter === "SELF_SPONSORED" ? "Self-sponsored" : "Government"}
+              </span>
             </>
           ) : null}
           {aiDecisionFilter ? (
@@ -312,13 +318,11 @@ export default function ReviewPage() {
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
             {students.error}
           </p>
-        ) : rows.length === 0 ? (
+        ) : pageRows.length === 0 ? (
           <p className="rounded-md border border-gray-200 bg-[#f8fafc] px-4 py-6 text-center text-[13px] text-[#5a5a5a]">
-            {allRows.length > 0 && sponsorshipFilter !== "ALL"
-              ? "No students match this sponsorship filter."
-              : allRows.length === 0 && aiDecisionFilter
-                ? "No students match the selected ranking recommendations filter."
-                : "No students awaiting review."}
+            {sponsorshipFilter !== "ALL" || aiDecisionFilter
+              ? "No students match the current filters."
+              : "No students awaiting review."}
           </p>
         ) : (
           <div className="overflow-hidden rounded-lg border border-gray-200">
@@ -425,7 +429,7 @@ export default function ReviewPage() {
             <Pagination
               page={page}
               pageSize={pageSize}
-              total={rows.length}
+              total={serverTotal}
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
               itemLabel="students"

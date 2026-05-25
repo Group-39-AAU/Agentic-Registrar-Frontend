@@ -8,10 +8,10 @@ type NavLink = { href: string; label: string };
 
 const ADMISSION_LINKS: NavLink[] = [
   { href: "/applications", label: "Applications" },
-  { href: "/flags", label: "Flagged Review" },
   { href: "/ranking", label: "Ranking" },
   { href: "/review", label: "Review" },
   { href: "/enrollment", label: "Enrollment" },
+  { href: "/flags", label: "Flagged Review" },
 ];
 
 // Section allocation + schedule generation moved to the Department-Head

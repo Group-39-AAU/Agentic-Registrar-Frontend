@@ -705,6 +705,133 @@ function ScoresTab({
   );
 }
 
+function formatFlagType(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function FlagCard({ flag }: { flag: Record<string, unknown> }) {
+  const type = typeof flag.type === "string" ? flag.type : null;
+  const severityRaw =
+    typeof flag.severity === "string" ? flag.severity.toUpperCase() : null;
+  const message = typeof flag.message === "string" ? flag.message : null;
+  const affected = Array.isArray(flag.affected_students)
+    ? (flag.affected_students as unknown[])
+    : [];
+
+  const knownKeys = new Set(["type", "severity", "message", "affected_students"]);
+  const extras = Object.entries(flag).filter(([k]) => !knownKeys.has(k));
+
+  const severityStyle = (() => {
+    switch (severityRaw) {
+      case "HIGH":
+      case "CRITICAL":
+        return "border-[#f0bcbc] bg-[#fdebeb] text-[#a31a1a]";
+      case "MEDIUM":
+      case "WARN":
+      case "WARNING":
+        return "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]";
+      case "LOW":
+      case "INFO":
+        return "border-[#cfddec] bg-[#eef4fa] text-[#1f5b94]";
+      default:
+        return "border-gray-300 bg-gray-50 text-gray-700";
+    }
+  })();
+
+  return (
+    <div className="rounded-md border border-[#f0bcbc] bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {severityRaw ? (
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${severityStyle}`}
+          >
+            {severityRaw}
+          </span>
+        ) : null}
+        {type ? (
+          <span className="text-[12px] font-semibold text-[#1f2f40]">
+            {formatFlagType(type)}
+          </span>
+        ) : null}
+      </div>
+
+      {message ? (
+        <p className="mt-2 whitespace-pre-wrap text-[12.5px] text-[#1f2f40]">
+          {message}
+        </p>
+      ) : null}
+
+      {affected.length > 0 ? (
+        <div className="mt-2 rounded-md border border-gray-200 bg-[#fafbfc] p-2">
+          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+            Affected students ({affected.length})
+          </p>
+          <ul className="mt-1 space-y-1 text-[12px] text-[#3a3a3a]">
+            {affected.map((row, i) => {
+              if (row && typeof row === "object") {
+                const r = row as Record<string, unknown>;
+                const name =
+                  typeof r.full_name === "string"
+                    ? r.full_name
+                    : typeof r.student_number === "string"
+                      ? r.student_number
+                      : typeof r.name === "string"
+                        ? r.name
+                        : null;
+                const id =
+                  typeof r.student_number === "string"
+                    ? r.student_number
+                    : typeof r.student_id === "string"
+                      ? r.student_id
+                      : null;
+                if (name || id) {
+                  return (
+                    <li key={`affected-${i}`}>
+                      {name ? (
+                        <span className="font-semibold text-[#1f2f40]">
+                          {name}
+                        </span>
+                      ) : null}
+                      {name && id && id !== name ? (
+                        <span className="ml-2 font-mono text-[11px] text-[#5a5a5a]">
+                          {id}
+                        </span>
+                      ) : id ? (
+                        <span className="font-mono text-[11px]">{id}</span>
+                      ) : null}
+                    </li>
+                  );
+                }
+              }
+              return (
+                <li key={`affected-${i}`} className="font-mono text-[11px]">
+                  {String(row)}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {extras.length > 0 ? (
+        <details className="mt-2 text-[11.5px] text-[#5a5a5a]">
+          <summary className="cursor-pointer font-semibold uppercase tracking-wide">
+            More detail
+          </summary>
+          <pre className="mt-1 max-h-[180px] overflow-auto rounded bg-[#f8fafc] p-2 text-[11px] text-[#3a3a3a]">
+            {JSON.stringify(Object.fromEntries(extras), null, 2)}
+          </pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function AgentReviewsTab({ reviews }: { reviews: AgentReview[] }) {
   if (reviews.length === 0) {
     return (
@@ -747,15 +874,13 @@ function AgentReviewsTab({ reviews }: { reviews: AgentReview[] }) {
             )}
             {r.flags.length > 0 ? (
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#a31a1a]">
-                  Flags
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#a31a1a]">
+                  Flags ({r.flags.length})
                 </p>
-                <ul className="list-disc space-y-1 pl-4">
+                <ul className="space-y-2">
                   {r.flags.map((f, i) => (
-                    <li key={`${r.id}-flag-${i}`} className="text-[#3a3a3a]">
-                      <code className="break-all text-[11.5px] text-[#1f2f40]">
-                        {JSON.stringify(f)}
-                      </code>
+                    <li key={`${r.id}-flag-${i}`}>
+                      <FlagCard flag={f} />
                     </li>
                   ))}
                 </ul>
