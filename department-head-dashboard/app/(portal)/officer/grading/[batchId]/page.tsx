@@ -60,12 +60,15 @@ type BatchView = {
   id: string;
   section_id: string;
   section_code: string;
+  section_semester: number;
   course_id: string;
   course_code: string;
   course_title: string;
   course_credit_hours: number;
   term_id: string;
+  term_name: string;
   instructor_id: string;
+  instructor_name: string;
   breakdown_id: string;
   status: GradeSubmissionStatus;
   iteration_count: number;
@@ -150,6 +153,15 @@ function formatDateTime(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function semesterToYearLabel(semester: number | null | undefined): string {
+  if (semester == null || !Number.isFinite(semester) || semester < 1) {
+    return "Year — · Sem —";
+  }
+  const year = Math.ceil(semester / 2);
+  const sem = ((semester - 1) % 2) + 1;
+  return `Year ${year} · Sem ${sem}`;
 }
 
 // Grade workflow status — where the batch sits in the submit→authorise
@@ -405,10 +417,22 @@ export default function OfficerGradingBatchDetail() {
                 </h1>
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px] text-[#5a5a5a]">
                   <span>
+                    <span className="font-semibold text-[#1f2f40]">
+                      {semesterToYearLabel(batch.section_semester)}
+                    </span>
+                  </span>
+                  <span>
                     Section <span className="font-semibold text-[#1f2f40]">{batch.section_code}</span>
+                  </span>
+                  <span>
+                    Instructor{" "}
+                    <span className="font-semibold text-[#1f2f40]">
+                      {batch.instructor_name || "—"}
+                    </span>
                   </span>
                   <span>{batch.course_credit_hours} cr</span>
                   <span>{batch.rows.length} students</span>
+                  {batch.term_name ? <span>Term {batch.term_name}</span> : null}
                   <span>Submitted {formatDateTime(batch.submitted_at)}</span>
                 </div>
               </div>
@@ -557,10 +581,25 @@ function ScoresTab({
     [batch.breakdown.components],
   );
 
+  const sortedRows = useMemo(() => {
+    const scoreFor = (sid: string) =>
+      gradesByStudent.get(sid)?.numeric_score ?? null;
+    return [...batch.rows].sort((a, b) => {
+      const sa = scoreFor(a.student_id);
+      const sb = scoreFor(b.student_id);
+      // Students without a computed grade fall to the bottom.
+      if (sa === null && sb === null) return a.full_name.localeCompare(b.full_name);
+      if (sa === null) return 1;
+      if (sb === null) return -1;
+      if (sb !== sa) return sb - sa; // descending
+      return a.full_name.localeCompare(b.full_name);
+    });
+  }, [batch.rows, gradesByStudent]);
+
   return (
     <Section
       title="Score matrix"
-      subtitle="Read-only view of the instructor's per-student × per-component grid, plus the computed letter each student would receive."
+      subtitle="Read-only view of the instructor's per-student × per-component grid. Each cell shows the component's weighted contribution toward the final 100. Sorted by final numeric score (highest first)."
     >
       <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px]">
         {sortedComponents.map((c) => (
@@ -570,7 +609,7 @@ function ScoresTab({
           >
             <span className="font-semibold text-[#1f2f40]">{c.name}</span>
             <span className="ml-1 text-[#5a5a5a]">
-              · {c.weight} pts (max {c.max_score})
+              · weight {c.weight} (raw out of {c.max_score})
             </span>
           </span>
         ))}
@@ -580,21 +619,30 @@ function ScoresTab({
         <table className="w-full min-w-[860px] border-collapse text-left text-[13px]">
           <thead>
             <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+              <th className="px-3 py-2 text-right">#</th>
               <th className="px-3 py-2">Student</th>
               {sortedComponents.map((c) => (
-                <th key={c.id} className="px-3 py-2 text-right">{c.name}</th>
+                <th key={c.id} className="px-3 py-2 text-right">
+                  {c.name}
+                  <span className="ml-1 font-normal normal-case text-[10px] text-[#5a5a5a]">
+                    /{c.weight}
+                  </span>
+                </th>
               ))}
               <th className="px-3 py-2 text-right">Numeric</th>
               <th className="px-3 py-2 text-center">Letter</th>
             </tr>
           </thead>
           <tbody>
-            {batch.rows.map((row) => {
+            {sortedRows.map((row, idx) => {
               const scoresByComp = new Map<string, number | null>();
               for (const s of row.scores) scoresByComp.set(s.component_id, s.score);
               const grade = gradesByStudent.get(row.student_id);
               return (
                 <tr key={row.student_id} className="border-b border-gray-100">
+                  <td className="px-3 py-2 text-right tabular-nums text-[#5a5a5a]">
+                    {idx + 1}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="font-semibold text-[#1f2f40]">{row.full_name}</div>
                     <div className="mt-0.5 flex items-center gap-2">
@@ -614,13 +662,22 @@ function ScoresTab({
                     </div>
                   </td>
                   {sortedComponents.map((c) => {
-                    const v = scoresByComp.get(c.id);
+                    const raw = scoresByComp.get(c.id);
+                    const weighted =
+                      raw == null || c.max_score === 0
+                        ? null
+                        : (raw / c.max_score) * c.weight;
                     return (
                       <td
                         key={c.id}
                         className="px-3 py-2 text-right tabular-nums text-[#1f2f40]"
+                        title={
+                          raw == null
+                            ? undefined
+                            : `Raw ${raw} / ${c.max_score} × weight ${c.weight}`
+                        }
                       >
-                        {v == null ? "—" : v}
+                        {weighted == null ? "—" : weighted.toFixed(2)}
                       </td>
                     );
                   })}
