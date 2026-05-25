@@ -108,11 +108,7 @@ function SearchSelect({
   );
 }
 
-<<<<<<< HEAD
 function CourseRegistrationPageInner() {
-=======
-function CourseRegistrationPageContent() {
->>>>>>> 6396eeb (fix: ad Suspense for pages that use useSearchParams)
   const router = useRouter();
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "1";
@@ -319,11 +315,7 @@ function CourseRegistrationPageContent() {
 export default function CourseRegistrationPage() {
   return (
     <Suspense fallback={null}>
-<<<<<<< HEAD
       <CourseRegistrationPageInner />
-=======
-      <CourseRegistrationPageContent />
->>>>>>> 6396eeb (fix: ad Suspense for pages that use useSearchParams)
     </Suspense>
   );
 }
