@@ -100,7 +100,7 @@ function ActionTag({ action }: { action: AddDropAction }) {
   );
 }
 
-export default function OfficerAddDropQueuePage() {
+export default function DepartmentHeadAddDropQueuePage() {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -154,23 +154,25 @@ export default function OfficerAddDropQueuePage() {
         <div className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(224,75,75,0.08)_0%,transparent_70%)]" />
         <div className="relative">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2f76b7]">
-            Course Officer · Add / Drop
+            Department Head · Add / Drop
           </p>
           <h1 className="mt-1 text-[26px] font-bold tracking-[-0.01em] text-[#1f2f40] sm:text-[28px]">
-            Officer decision queue
+            Add / Drop decision queue
           </h1>
           <p className="mt-2 max-w-[680px] text-[14px] leading-relaxed text-[#5a5a5a]">
-            Student add/drop batches the EnrollmentAdjustmentAgent has already
-            reviewed. Approve agent-approved batches to apply them, override
-            agent-denied batches when you disagree, or finalise a denial — both
-            override and reject require a justification.
+            Add/drop batches submitted by students in your department.
+            The EnrollmentAdjustmentAgent has already reviewed each
+            one — approve agent-approved batches to apply them,
+            override agent-denied batches when you disagree, or
+            finalise a denial. Override and reject both require a
+            justification.
           </p>
         </div>
       </div>
 
       <Section
         title="Pending batches"
-        subtitle="Defaults to every batch awaiting an officer decision (AGENT_APPROVED + AGENT_DENIED), oldest first."
+        subtitle="Defaults to every batch awaiting a decision (AGENT_APPROVED + AGENT_DENIED) for students in your department, oldest first."
       >
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1">
