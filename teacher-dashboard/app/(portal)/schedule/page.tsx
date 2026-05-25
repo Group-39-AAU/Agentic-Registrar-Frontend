@@ -71,6 +71,14 @@ function colorFor(seed: string) {
   return SLOT_PALETTE[Math.abs(hash) % SLOT_PALETTE.length];
 }
 
+const ROMAN_YEAR = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+function cohortLabel(semester: number): string | null {
+  if (!semester || semester < 1) return null;
+  const year = Math.ceil(semester / 2);
+  const sem = ((semester - 1) % 2) + 1;
+  return `Year ${ROMAN_YEAR[year - 1] ?? String(year)} · Sem ${sem}`;
+}
+
 function normalizeDay(d: string): Day | null {
   if (!d) return null;
   const upper = d.toUpperCase();
@@ -278,10 +286,12 @@ function WeeklyGrid({ slots }: { slots: InstructorScheduleSlot[] }) {
                     >
                       <div className={`absolute left-0 top-0 h-full w-[3px] rounded-l-md ${palette.accent}`} />
                       <span className="absolute right-1 top-1 rounded-full bg-white/70 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-[#1f5b94] shadow-sm">
-                        {slot.section_code}
+                        {cohortLabel(slot.semester)
+                          ? `${cohortLabel(slot.semester)} · ${slot.section_code}`
+                          : slot.section_code}
                       </span>
                       <div className={`pl-1 ${palette.text}`}>
-                        <p className="truncate pr-9 text-[11px] font-semibold uppercase tracking-wide">
+                        <p className="truncate pr-[110px] text-[11px] font-semibold uppercase tracking-wide">
                           {slot.course_code}
                         </p>
                         <p
