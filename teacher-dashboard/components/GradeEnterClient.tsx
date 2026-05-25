@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
+  deleteAllScores,
   describeIncomplete,
   fetchBreakdown,
+  fetchTerms,
   formatLetter,
   getOrCreateBatch,
   justifyBatch,
@@ -94,6 +96,38 @@ export default function GradeEnterClient() {
   const [reopenBusy, setReopenBusy] = useState(false);
 
   const [reviews, setReviews] = useState<AgentReview[]>([]);
+
+  const [editingBreakdown, setEditingBreakdown] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const [termLabel, setTermLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!termId) {
+      setTermLabel(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const terms = await fetchTerms();
+        if (cancelled) return;
+        const t = terms.find((x) => x.id === termId);
+        if (t) {
+          const phase = t.phase
+            ? `${t.phase.charAt(0).toUpperCase()}${t.phase.slice(1).toLowerCase()}`
+            : "";
+          setTermLabel(phase ? `${t.term_name} · ${phase}` : t.term_name);
+        }
+      } catch {
+        // Fallback handled inline.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [termId]);
 
   const seedScoresFromBatch = useCallback((b: GradeBatch) => {
     const next: ScoresMap = {};
@@ -217,6 +251,7 @@ export default function GradeEnterClient() {
     try {
       await upsertBreakdown(sectionId, courseId, cleaned);
       setBreakdownExists(true);
+      setEditingBreakdown(false);
       await refreshBatchAndReviews(sectionId, courseId);
     } catch (e: unknown) {
       if (e instanceof ApiError) {
@@ -226,6 +261,60 @@ export default function GradeEnterClient() {
       }
     } finally {
       setBreakdownBusy(false);
+    }
+  }
+
+  function seedDraftFromBreakdown(b: GradeBatch) {
+    setDraftComponents(
+      b.breakdown.components
+        .slice()
+        .sort((a, b) => a.order_index - b.order_index)
+        .map((c) => ({
+          name: c.name,
+          weight: String(c.weight),
+          max_score: String(c.max_score),
+        })),
+    );
+  }
+
+  function startEditBreakdown() {
+    if (!batch) return;
+    setBreakdownError(null);
+    seedDraftFromBreakdown(batch);
+    setEditingBreakdown(true);
+  }
+
+  function cancelEditBreakdown() {
+    setBreakdownError(null);
+    setEditingBreakdown(false);
+  }
+
+  async function doResetScores() {
+    if (!batch) return;
+    if (
+      typeof window !== "undefined"
+      && !window.confirm(
+        "This wipes every score in the batch and unlocks the breakdown for editing. Continue?",
+      )
+    ) {
+      return;
+    }
+    setResetError(null);
+    setResetBusy(true);
+    try {
+      const next = await deleteAllScores(batch.id);
+      setBatch(next);
+      seedScoresFromBatch(next);
+      setScoreSaveError(null);
+      setScoreSaveMsg(null);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setResetError(e.message ?? "Could not reset scores.");
+      } else {
+        setResetError("Could not reset scores.");
+      }
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -390,7 +479,10 @@ export default function GradeEnterClient() {
         </Link>
         {termId ? (
           <p className="text-[11px] text-[#5a5a5a]">
-            Term <span className="font-mono">{termId.slice(0, 8)}…</span>
+            Term{" "}
+            <span className="font-semibold text-[#1f2f40]">
+              {termLabel ?? `${termId.slice(0, 8)}…`}
+            </span>
           </p>
         ) : null}
       </div>
@@ -445,34 +537,89 @@ export default function GradeEnterClient() {
             ) : null}
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[14px] font-bold text-[#1f2f40]">
-                Assessment breakdown
-              </h2>
-              <span className="text-[11px] text-[#5a5a5a]">
-                {batch.breakdown.locked_at
-                  ? "Locked — scores already entered"
-                  : "Unlocked"}
-              </span>
+          {editingBreakdown ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12px] text-[#5a5a5a]">
+                  Editing the breakdown bumps its version. Cancel to keep the
+                  existing one.
+                </p>
+                <button
+                  type="button"
+                  onClick={cancelEditBreakdown}
+                  className="h-[32px] rounded-md border border-[#9bb0cc] bg-white px-3 text-[12px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+                >
+                  Cancel edit
+                </button>
+              </div>
+              <BreakdownEditor
+                rows={draftComponents}
+                totalWeight={breakdownDraftSum}
+                busy={breakdownBusy}
+                error={breakdownError}
+                onAdd={addComponentRow}
+                onRemove={removeComponentRow}
+                onChange={updateComponentRow}
+                onSave={saveBreakdown}
+              />
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {batch.breakdown.components
-                .slice()
-                .sort((a, b) => a.order_index - b.order_index)
-                .map((c) => (
-                  <div
-                    key={c.id}
-                    className="rounded-md border border-gray-200 bg-[#fafbfc] px-3 py-2 text-[12.5px]"
-                  >
-                    <p className="font-semibold text-[#1f2f40]">{c.name}</p>
-                    <p className="mt-0.5 text-[11px] text-[#5a5a5a]">
-                      weight {c.weight} · out of {c.max_score}
-                    </p>
-                  </div>
-                ))}
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[14px] font-bold text-[#1f2f40]">
+                  Assessment breakdown
+                </h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#5a5a5a]">
+                    {batch.breakdown.locked_at
+                      ? "Locked — scores already entered"
+                      : "Unlocked"}
+                  </span>
+                  {isEditable && !batch.breakdown.locked_at ? (
+                    <button
+                      type="button"
+                      onClick={startEditBreakdown}
+                      className="h-[28px] rounded-md border border-[#9bb0cc] bg-white px-2.5 text-[11.5px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff]"
+                    >
+                      Edit breakdown
+                    </button>
+                  ) : null}
+                  {isEditable && batch.breakdown.locked_at ? (
+                    <button
+                      type="button"
+                      onClick={() => void doResetScores()}
+                      disabled={resetBusy}
+                      title="Wipes every entered score and unlocks the breakdown for editing."
+                      className="h-[28px] rounded-md border border-[#e8acac] bg-white px-2.5 text-[11.5px] font-semibold text-[#a31a1a] hover:bg-[#fdebeb] disabled:opacity-60"
+                    >
+                      {resetBusy ? "Resetting…" : "Reset scores & unlock"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {resetError ? (
+                <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                  {resetError}
+                </p>
+              ) : null}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {batch.breakdown.components
+                  .slice()
+                  .sort((a, b) => a.order_index - b.order_index)
+                  .map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded-md border border-gray-200 bg-[#fafbfc] px-3 py-2 text-[12.5px]"
+                    >
+                      <p className="font-semibold text-[#1f2f40]">{c.name}</p>
+                      <p className="mt-0.5 text-[11px] text-[#5a5a5a]">
+                        weight {c.weight} · out of {c.max_score}
+                      </p>
+                    </div>
+                  ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <ScoreMatrix
             batch={batch}

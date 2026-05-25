@@ -246,12 +246,20 @@ export default function CoursesPageClient() {
                     {s.slot_count}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/grades/enter?section_id=${encodeURIComponent(s.section_id)}&course_id=${encodeURIComponent(s.course_id)}&term_id=${encodeURIComponent(s.term_id)}`}
-                      className="font-semibold text-[#2f76b7] hover:underline"
-                    >
-                      Enter grades
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        href={`/roster?section_id=${encodeURIComponent(s.section_id)}&course_id=${encodeURIComponent(s.course_id)}&term_id=${encodeURIComponent(s.term_id)}`}
+                        className="font-semibold text-[#2f76b7] hover:underline"
+                      >
+                        View roster
+                      </Link>
+                      <Link
+                        href={`/grades/enter?section_id=${encodeURIComponent(s.section_id)}&course_id=${encodeURIComponent(s.course_id)}&term_id=${encodeURIComponent(s.term_id)}`}
+                        className="font-semibold text-[#2f76b7] hover:underline"
+                      >
+                        Enter grades
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
