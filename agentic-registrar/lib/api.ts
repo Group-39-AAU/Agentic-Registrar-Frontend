@@ -491,6 +491,8 @@ export type ScheduleSlot = {
   start_time: string;
   end_time: string;
   instructor_id?: string;
+  instructor_name?: string | null;
+  instructor_staff_id?: string | null;
   room?: string;
   course_id?: string;
   source?: string;
@@ -553,6 +555,8 @@ export type ScheduleSlotSummary = {
   end_time: string;
   room?: string;
   instructor_id?: string;
+  instructor_name?: string | null;
+  instructor_staff_id?: string | null;
 };
 
 /** A candidate slot that collides with a slot already on the schedule. */
