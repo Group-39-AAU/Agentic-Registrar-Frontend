@@ -396,9 +396,6 @@ export default function StandingConsolePage() {
   return (
     <div className="space-y-6">
       <div className="aau-card relative overflow-hidden rounded-2xl p-6 sm:p-8">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#2f76b7]">
-          Department Head · Track C
-        </p>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.01em] text-[#1f2f40] sm:text-[28px]">
           Academic Standing
         </h1>
