@@ -6,7 +6,7 @@ import PortalMainNav from "@/components/PortalMainNav";
 import PortalSideMenu from "@/components/PortalSideMenu";
 import PortalTopStrip from "@/components/PortalTopStrip";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   callbackRegistrationPayment,
@@ -31,7 +31,7 @@ function semesterToYear(currentSemester: number): string {
 
 // TopStrip moved to shared component PortalTopStrip.
 
-export default function RegisteredCoursesPage() {
+function RegisteredCoursesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const termId = searchParams.get("termId") || "";
@@ -619,5 +619,13 @@ export default function RegisteredCoursesPage() {
           actually submit the registration. */}
       {termId ? <AdvisoryConsultPanel termId={termId} /> : null}
     </div>
+  );
+}
+
+export default function RegisteredCoursesPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisteredCoursesPageContent />
+    </Suspense>
   );
 }
