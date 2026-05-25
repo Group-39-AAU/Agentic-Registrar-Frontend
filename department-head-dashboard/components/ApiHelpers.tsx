@@ -66,6 +66,75 @@ export function JsonResult({ state }: { state: RequestState }) {
   );
 }
 
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel = "Cancel",
+  tone = "danger",
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description: React.ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: "danger" | "brand";
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  const confirmStyles =
+    tone === "danger"
+      ? "bg-[#c0392b] hover:bg-[#a8311f] focus-visible:ring-[#c0392b]/40"
+      : "bg-[#2f78b7] hover:bg-[#266595] focus-visible:ring-[#2f78b7]/40";
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4 backdrop-blur-[2px]"
+      onClick={onCancel}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+    >
+      <div
+        className="aau-card w-full max-w-[460px] rounded-2xl bg-white p-6 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.35)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="confirm-dialog-title"
+          className="text-[18px] font-bold tracking-[-0.01em] text-[#1f2f40]"
+        >
+          {title}
+        </h2>
+        <div className="mt-2 text-[13.5px] leading-relaxed text-[#3a3a3a]">
+          {description}
+        </div>
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex h-[40px] items-center justify-center rounded-md border border-gray-300 bg-white px-5 text-[13px] font-semibold text-[#1f2f40] hover:bg-[#f8fafc] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`inline-flex h-[40px] items-center justify-center rounded-md px-5 text-[13px] font-semibold text-white shadow-[0_8px_16px_-8px_rgba(0,0,0,0.3)] focus:outline-none focus-visible:ring-2 ${confirmStyles}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Section({
   title,
   subtitle,

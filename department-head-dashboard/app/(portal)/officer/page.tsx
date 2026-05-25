@@ -1,6 +1,12 @@
 "use client";
 
-import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
+import {
+  ConfirmDialog,
+  RequestState,
+  Section,
+  callApi,
+  initialState,
+} from "@/components/ApiHelpers";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -265,6 +271,12 @@ export default function OfficerPage() {
 
   const [allocation, setAllocation] = useState<RequestState>(initialState);
   const [schedule, setSchedule] = useState<RequestState>(initialState);
+  // Which action the user has just clicked and is now being asked to
+  // confirm. `null` = no dialog open. Both runs wipe-and-rebuild on
+  // the backend, so we never fire them without explicit confirmation.
+  const [pendingAction, setPendingAction] = useState<
+    "allocation" | "schedule" | null
+  >(null);
 
   const [overview, setOverview] = useState<DepartmentTermOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -403,6 +415,19 @@ export default function OfficerPage() {
       term_id: selectedTerm.id,
     });
     await fetchOverview(selectedTerm.id);
+  }
+
+  // "Regenerate" applies whenever there's already data from a previous
+  // run — labels and dialog copy soften for first runs so we don't
+  // scare an officer who hasn't created anything yet.
+  const hasAllocationResult = !!allocation.data && !allocation.error;
+  const hasScheduleResult = !!schedule.data && !schedule.error;
+
+  function confirmPendingAction() {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (action === "allocation") runAllocation();
+    else if (action === "schedule") runSchedule();
   }
 
   const allocationData = allocation.data as AllocationResponse | null;
@@ -551,10 +576,14 @@ export default function OfficerPage() {
           <button
             type="button"
             disabled={!readyToRun || allocation.loading || allocateDisabledByExisting}
-            onClick={runAllocation}
+            onClick={() => setPendingAction("allocation")}
             className="aau-button-primary mb-4 inline-flex h-[42px] items-center justify-center rounded-md px-5 text-[13px] font-semibold tracking-wide text-white"
           >
-            {allocation.loading ? "Allocating sections…" : "Allocate sections"}
+            {allocation.loading
+              ? "Allocating sections…"
+              : hasAllocationResult
+                ? "Regenerate sections"
+                : "Allocate sections"}
           </button>
 
           {allocation.error ? (
@@ -653,10 +682,14 @@ export default function OfficerPage() {
               || generateDisabledByExisting
               || generateBlockedNoSections
             }
-            onClick={runSchedule}
+            onClick={() => setPendingAction("schedule")}
             className="aau-button-primary mb-4 inline-flex h-[42px] items-center justify-center rounded-md px-5 text-[13px] font-semibold tracking-wide text-white"
           >
-            {schedule.loading ? "Generating schedule…" : "Generate schedule"}
+            {schedule.loading
+              ? "Generating schedule…"
+              : hasScheduleResult
+                ? "Regenerate schedule"
+                : "Generate schedule"}
           </button>
 
           {generateBlockedNoSections && !generateDisabledByExisting ? (
@@ -734,6 +767,81 @@ export default function OfficerPage() {
           ) : null}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={pendingAction === "allocation"}
+        title={
+          hasAllocationResult
+            ? "Regenerate section allocation?"
+            : "Run section allocation?"
+        }
+        description={
+          <>
+            <p>
+              This will{" "}
+              {hasAllocationResult ? (
+                <>
+                  <strong>wipe every existing section</strong> for{" "}
+                </>
+              ) : (
+                <>build sections for </>
+              )}
+              <strong>
+                {selectedTerm
+                  ? `${selectedTerm.term_name} · ${formatPhase(selectedTerm.phase)}`
+                  : "this term"}
+              </strong>
+              {hasAllocationResult
+                ? " and re-place every registered student into a fresh cohort."
+                : "."}
+            </p>
+            <p className="mt-2 text-[12px] text-[#8a5a00]">
+              Are you sure you want to continue?
+            </p>
+          </>
+        }
+        confirmLabel={hasAllocationResult ? "Yes, regenerate" : "Yes, run it"}
+        onConfirm={confirmPendingAction}
+        onCancel={() => setPendingAction(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingAction === "schedule"}
+        title={
+          hasScheduleResult
+            ? "Regenerate the schedule?"
+            : "Generate the schedule?"
+        }
+        description={
+          <>
+            <p>
+              This will{" "}
+              {hasScheduleResult ? (
+                <>
+                  <strong>delete every existing class slot</strong> and rebuild
+                  the timetable for{" "}
+                </>
+              ) : (
+                <>build a fresh timetable for </>
+              )}
+              <strong>
+                {selectedTerm
+                  ? `${selectedTerm.term_name} · ${formatPhase(selectedTerm.phase)}`
+                  : "this term"}
+              </strong>
+              {hasScheduleResult
+                ? ". Students' Add/Drop selections that point at deleted slots may need to be reviewed."
+                : "."}
+            </p>
+            <p className="mt-2 text-[12px] text-[#8a5a00]">
+              Are you sure you want to continue?
+            </p>
+          </>
+        }
+        confirmLabel={hasScheduleResult ? "Yes, regenerate" : "Yes, generate"}
+        onConfirm={confirmPendingAction}
+        onCancel={() => setPendingAction(null)}
+      />
     </div>
   );
 }
