@@ -58,6 +58,65 @@ type Batch = {
   officer_name?: string | null;
 };
 
+type TranscriptCourseEntry = {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  credit_hours: number;
+  letter_grade: string;
+  numeric_score: number | null;
+  grade_points: number | null;
+};
+
+type TranscriptTermEntry = {
+  term_id: string;
+  term_name: string;
+  term_phase: string;
+  year_in_program: number;
+  courses: TranscriptCourseEntry[];
+  term_gpa: number | null;
+  total_credit_hours: number;
+  academic_status: string | null;
+};
+
+type TranscriptResponse = {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  terms: TranscriptTermEntry[];
+  cgpa: number | null;
+  total_credit_hours_completed: number;
+};
+
+type RegistrationCourseRead = {
+  id: string;
+  course_id: string;
+  is_dropped: boolean;
+  course: {
+    code: string;
+    title: string;
+    credit_hours: number;
+    semester: number;
+    department: string;
+  } | null;
+};
+
+type CurrentRegistration = {
+  id: string;
+  term_id: string;
+  term_name: string | null;
+  status: string;
+  courses: RegistrationCourseRead[];
+  active_courses?: RegistrationCourseRead[];
+  active_credit_total?: number;
+  active_course_count?: number;
+};
+
+type StudentContext = {
+  transcript: TranscriptResponse;
+  current_registration: CurrentRegistration | null;
+};
+
 type DecisionMode = "approve" | "override" | "reject";
 
 function authHeaders(): Record<string, string> {
@@ -71,6 +130,27 @@ function formatDateTime(iso?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function formatPhase(phase: string): string {
+  if (!phase) return phase;
+  return phase.charAt(0).toUpperCase() + phase.slice(1).toLowerCase();
+}
+
+const ROMAN_NUMERALS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+
+function toRoman(n: number): string {
+  return ROMAN_NUMERALS[n] ?? String(n);
+}
+
+function formatNumber(n: number | null | undefined, digits = 2): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toFixed(digits);
+}
+
+function formatLetterGrade(letter: string): string {
+  // Backend ships PLUS / MINUS suffixes (e.g. A_PLUS, B_MINUS).
+  return letter.replace("_PLUS", "+").replace("_MINUS", "-");
 }
 
 function StatusPill({ status }: { status: AddDropBatchStatus }) {
@@ -124,6 +204,9 @@ export default function DepartmentHeadAddDropBatchDetail() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [context, setContext] = useState<StudentContext | null>(null);
+  const [contextError, setContextError] = useState<string | null>(null);
+
   const [mode, setMode] = useState<DecisionMode | null>(null);
   const [justification, setJustification] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -155,9 +238,37 @@ export default function DepartmentHeadAddDropBatchDetail() {
     }
   }, [batchId]);
 
+  const loadContext = useCallback(async () => {
+    if (!batchId) return;
+    setContextError(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/courses/officer/add-drop/batches/${encodeURIComponent(
+          batchId,
+        )}/student-context`,
+        { headers: authHeaders() },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          data && typeof data === "object" && "detail" in data
+            ? String((data as { detail?: unknown }).detail ?? "Request failed")
+            : "Could not load student context.";
+        throw new Error(`${detail} (HTTP ${res.status})`);
+      }
+      setContext(data as StudentContext);
+    } catch (e) {
+      setContextError(
+        e instanceof Error ? e.message : "Could not load student context.",
+      );
+      setContext(null);
+    }
+  }, [batchId]);
+
   useEffect(() => {
     void loadBatch();
-  }, [loadBatch]);
+    void loadContext();
+  }, [loadBatch, loadContext]);
 
   const reasonsByCourse = useMemo(() => {
     const map = new Map<string, AgentReason>();
@@ -417,6 +528,53 @@ export default function DepartmentHeadAddDropBatchDetail() {
             </div>
           </Section>
 
+          {/* Current registration — the term the batch is acting on */}
+          <Section
+            title="Current registration"
+            subtitle={
+              context?.current_registration?.term_name
+                ? `Active courses on the student's ${context.current_registration.term_name} registration — what the add/drop is being applied against.`
+                : "Active courses on the student's registration for this term."
+            }
+          >
+            {contextError ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                {contextError}
+              </p>
+            ) : !context ? (
+              <p className="text-[12.5px] text-[#5a5a5a]">Loading…</p>
+            ) : !context.current_registration ? (
+              <p className="text-[12.5px] italic text-[#5a5a5a]">
+                No registration row found for this term.
+              </p>
+            ) : (
+              <CurrentRegistrationTable
+                registration={context.current_registration}
+              />
+            )}
+          </Section>
+
+          {/* Previous course history — transcript by semester */}
+          <Section
+            title="Previous course history"
+            subtitle="Authorised grades from prior semesters, newest first. Carries the student's CGPA across all terms."
+          >
+            {contextError ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                {contextError}
+              </p>
+            ) : !context ? (
+              <p className="text-[12.5px] text-[#5a5a5a]">Loading…</p>
+            ) : context.transcript.terms.length === 0 ? (
+              <p className="text-[12.5px] italic text-[#5a5a5a]">
+                No authorised grades yet — this student has no completed
+                semesters on record.
+              </p>
+            ) : (
+              <TranscriptHistory transcript={context.transcript} />
+            )}
+          </Section>
+
           {/* Decision audit */}
           {batch.officer_name || batch.officer_decision_at || batch.officer_justification ? (
             <Section
@@ -467,6 +625,221 @@ export default function DepartmentHeadAddDropBatchDetail() {
           error={formError}
         />
       ) : null}
+    </div>
+  );
+}
+
+function CurrentRegistrationTable({
+  registration,
+}: {
+  registration: CurrentRegistration;
+}) {
+  const active = registration.courses.filter((c) => !c.is_dropped);
+  const dropped = registration.courses.filter((c) => c.is_dropped);
+  const totalCredits = active.reduce(
+    (s, c) => s + (c.course?.credit_hours ?? 0),
+    0,
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-[#5a5a5a]">
+        <span>
+          Status{" "}
+          <span className="font-mono text-[#1f2f40]">
+            {registration.status}
+          </span>
+        </span>
+        <span>
+          Active courses{" "}
+          <span className="font-semibold text-[#1f2f40]">{active.length}</span>
+        </span>
+        <span>
+          Credits{" "}
+          <span className="font-semibold text-[#1f2f40] tabular-nums">
+            {totalCredits}
+          </span>
+        </span>
+        {dropped.length > 0 ? (
+          <span>
+            Dropped{" "}
+            <span className="font-semibold text-[#a31a1a]">
+              {dropped.length}
+            </span>
+          </span>
+        ) : null}
+      </div>
+
+      {active.length === 0 ? (
+        <p className="text-[12.5px] italic text-[#5a5a5a]">
+          No active courses on this registration.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full min-w-[520px] border-collapse text-left text-[13px]">
+            <thead>
+              <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                <th className="px-4 py-2.5">Code</th>
+                <th className="px-4 py-2.5">Title</th>
+                <th className="px-4 py-2.5">Sem</th>
+                <th className="px-4 py-2.5 text-right">Credits</th>
+              </tr>
+            </thead>
+            <tbody>
+              {active.map((c) => (
+                <tr key={c.id} className="border-b border-gray-100">
+                  <td className="px-4 py-2 font-mono text-[12.5px] font-semibold text-[#1f5b94]">
+                    {c.course?.code ?? "—"}
+                  </td>
+                  <td className="px-4 py-2 text-[12.5px] text-[#1f2f40]">
+                    {c.course?.title ?? "—"}
+                  </td>
+                  <td className="px-4 py-2 tabular-nums text-[12px] text-[#3a3a3a]">
+                    {c.course?.semester ?? "—"}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-[12.5px] text-[#3a3a3a]">
+                    {c.course?.credit_hours ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {dropped.length > 0 ? (
+        <details className="rounded-lg border border-gray-200 bg-[#fafbfc] px-4 py-2 text-[12.5px]">
+          <summary className="cursor-pointer font-semibold text-[#5a5a5a]">
+            {dropped.length} previously dropped course
+            {dropped.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 space-y-1 pl-5 text-[12px] text-[#5a5a5a]">
+            {dropped.map((c) => (
+              <li key={c.id} className="line-through">
+                <span className="font-mono">{c.course?.code ?? "—"}</span>{" "}
+                {c.course?.title ?? ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function TranscriptHistory({
+  transcript,
+}: {
+  transcript: TranscriptResponse;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-[#5a5a5a]">
+        <span>
+          CGPA{" "}
+          <span className="font-semibold text-[#1f2f40] tabular-nums">
+            {formatNumber(transcript.cgpa)}
+          </span>
+        </span>
+        <span>
+          Credits completed{" "}
+          <span className="font-semibold text-[#1f2f40] tabular-nums">
+            {transcript.total_credit_hours_completed}
+          </span>
+        </span>
+        <span>
+          Terms on record{" "}
+          <span className="font-semibold text-[#1f2f40]">
+            {transcript.terms.length}
+          </span>
+        </span>
+      </div>
+
+      <div className="space-y-3">
+        {transcript.terms.map((term) => {
+          const sgp = term.courses.reduce(
+            (s, c) => s + (c.grade_points ?? 0),
+            0,
+          );
+          const yearLabel = term.year_in_program
+            ? `Year ${toRoman(term.year_in_program)} · `
+            : "";
+          return (
+            <div
+              key={term.term_id}
+              className="overflow-hidden rounded-lg border border-gray-200 bg-white"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-[#f8fafc] px-4 py-2.5">
+                <p className="text-[12.5px] font-semibold text-[#1f5b94]">
+                  {yearLabel}
+                  {term.term_name} · Semester {formatPhase(term.term_phase)}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-[#5a5a5a]">
+                  <span>
+                    SGP{" "}
+                    <span className="font-semibold tabular-nums text-[#1f2f40]">
+                      {formatNumber(sgp)}
+                    </span>
+                  </span>
+                  <span>
+                    SGPA{" "}
+                    <span className="font-semibold tabular-nums text-[#1f2f40]">
+                      {formatNumber(term.term_gpa)}
+                    </span>
+                  </span>
+                  <span>
+                    Credits{" "}
+                    <span className="font-semibold tabular-nums text-[#1f2f40]">
+                      {term.total_credit_hours}
+                    </span>
+                  </span>
+                </div>
+              </div>
+              {term.courses.length === 0 ? (
+                <p className="px-4 py-3 text-[12px] italic text-[#5a5a5a]">
+                  No courses on this term.
+                </p>
+              ) : (
+                <table className="w-full border-collapse text-left text-[12.5px]">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-white text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                      <th className="px-4 py-2">Code</th>
+                      <th className="px-4 py-2">Title</th>
+                      <th className="px-4 py-2 text-right">Credits</th>
+                      <th className="px-4 py-2 text-right">Numeric</th>
+                      <th className="px-4 py-2 text-center">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {term.courses.map((c) => (
+                      <tr
+                        key={`${term.term_id}-${c.course_id}`}
+                        className="border-b border-gray-50 last:border-b-0"
+                      >
+                        <td className="px-4 py-1.5 font-mono text-[12.5px] font-semibold text-[#1f5b94]">
+                          {c.course_code}
+                        </td>
+                        <td className="px-4 py-1.5 text-[#1f2f40]">
+                          {c.course_title}
+                        </td>
+                        <td className="px-4 py-1.5 text-right tabular-nums text-[#3a3a3a]">
+                          {c.credit_hours}
+                        </td>
+                        <td className="px-4 py-1.5 text-right tabular-nums text-[#3a3a3a]">
+                          {formatNumber(c.numeric_score)}
+                        </td>
+                        <td className="px-4 py-1.5 text-center font-semibold text-[#1f2f40]">
+                          {formatLetterGrade(c.letter_grade)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

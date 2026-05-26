@@ -1208,6 +1208,8 @@ export type TranscriptTermEntry = {
   term_phase: string;
   term_start_date: string;
   term_end_date: string;
+  /** Year in program (I-V → 1-5) derived from the curriculum semester. */
+  year_in_program: number;
   courses: TranscriptCourseEntry[];
   term_gpa: number | null;
   total_credit_hours: number;
