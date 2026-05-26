@@ -24,8 +24,17 @@ function formatNumber(n: number | null | undefined, digits = 2): string {
   return n.toFixed(digits);
 }
 
+const ROMAN_NUMERALS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+
+function toRoman(n: number): string {
+  return ROMAN_NUMERALS[n] ?? String(n);
+}
+
 function termHeading(term: TranscriptTermEntry): string {
-  return `Academic Year : ${term.term_name},   Semester : ${formatPhase(term.term_phase)}`;
+  const yearLabel = term.year_in_program
+    ? `   Year ${toRoman(term.year_in_program)},`
+    : "";
+  return `Academic Year : ${term.term_name},${yearLabel}   Semester : ${formatPhase(term.term_phase)}`;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -211,8 +220,7 @@ export default function GradeReportPage() {
   }, []);
 
   // Compute SGP (Σ grade_points) per term and the running cumulative
-  // CGP, so the per-semester stats box matches the legacy layout
-  // (SGP / SGPA / CGP / CGPA).
+  // CGP for the per-semester stats box (SGP / SGPA / CGP / CGPA).
   //
   // ``grade_points`` from the backend is ALREADY credit-weighted —
   // ``Grade.grade_points = credit_hours × points(letter_grade)`` per
@@ -224,10 +232,11 @@ export default function GradeReportPage() {
   // contribution and are excluded from both the numerator and the
   // credit-hours denominator, mirroring Senate Art 90.7.4.
   //
-  // Terms whose academic standing hasn't been authorised yet are
-  // treated as pending: they contribute neither SGP/SGPA nor a
-  // CGPA-bearing row, because the grade set isn't finalised until the
-  // DH authorises the standing.
+  // Stats render unconditionally — the AAU grade report shows SGP/
+  // SGPA/CGP/CGPA from the moment grades exist. The authorised
+  // ``academic_status`` (Track C) only affects the "Academic Status"
+  // line; until the DH authorises, it falls back to a provisional
+  // label derived from term GPA.
   const terms = transcript?.terms ?? [];
   // Backend returns terms newest-first; for a meaningful running CGP we
   // walk oldest → newest to accumulate, then render in the API order.
@@ -236,10 +245,6 @@ export default function GradeReportPage() {
   let runCgp = 0;
   let runCredits = 0;
   for (const t of orderedAsc) {
-    if (!t.academic_status_authorised_at) {
-      // Standing not yet authorised → skip this term in the running CGPA.
-      continue;
-    }
     let sgp = 0;
     let credits = 0;
     for (const c of t.courses) {
@@ -385,39 +390,29 @@ export default function GradeReportPage() {
                             <div className="m-4 rounded-[8px] border border-[#dedede] bg-[#ffffff] px-4 py-2 md:my-[50px] md:px-[80px]">
                               <div className="inline-grid grid-cols-1 gap-x-8 gap-y-1 md:grid-cols-2 md:gap-x-[100px]">
                                 <p className="font-semibold">
-                                  SGP :{" "}
-                                  {term.academic_status_authorised_at
-                                    ? formatNumber(sgp)
-                                    : "-"}
+                                  SGP : {formatNumber(sgp)}
                                 </p>
                                 <p className="font-semibold">
-                                  SGPA :{" "}
-                                  {term.academic_status_authorised_at
-                                    ? formatNumber(term.term_gpa)
-                                    : "-"}
+                                  SGPA : {formatNumber(term.term_gpa)}
                                 </p>
                                 <p className="font-semibold">
-                                  CGP :{" "}
-                                  {term.academic_status_authorised_at
-                                    ? formatNumber(totals.cgp)
-                                    : "-"}
+                                  CGP : {formatNumber(totals.cgp)}
                                 </p>
                                 <p className="font-semibold">
                                   CGPA :{" "}
-                                  {term.academic_status_authorised_at
-                                    ? formatNumber(
-                                        totals.credits > 0
-                                          ? totals.cgp / totals.credits
-                                          : null,
-                                      )
-                                    : "-"}
+                                  {formatNumber(
+                                    totals.credits > 0
+                                      ? totals.cgp / totals.credits
+                                      : null,
+                                  )}
                                 </p>
                               </div>
                               <p className="mt-6 font-semibold">
                                 Academic Status :{" "}
-                                {term.academic_status_authorised_at
-                                  ? academicStatus(term.term_gpa, term.academic_status)
-                                  : "-"}
+                                {academicStatus(
+                                  term.term_gpa,
+                                  term.academic_status,
+                                )}
                                 {term.academic_status_authorised_at ? (
                                   <span className="ml-2 text-[12px] font-normal text-[#5a5a5a]">
                                     (authorised{" "}
