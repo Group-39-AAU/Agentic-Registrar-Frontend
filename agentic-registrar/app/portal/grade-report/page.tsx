@@ -210,9 +210,20 @@ export default function GradeReportPage() {
     };
   }, []);
 
-  // Compute SGP (sum of grade_points × credit_hours) per term and the
-  // running cumulative CGP, so the per-semester stats box matches the
-  // legacy layout (SGP / SGPA / CGP / CGPA).
+  // Compute SGP (Σ grade_points) per term and the running cumulative
+  // CGP, so the per-semester stats box matches the legacy layout
+  // (SGP / SGPA / CGP / CGPA).
+  //
+  // ``grade_points`` from the backend is ALREADY credit-weighted —
+  // ``Grade.grade_points = credit_hours × points(letter_grade)`` per
+  // app/modules/course/models.py — so SGP is a plain sum, not a
+  // credit-weighted sum. Multiplying by ``credit_hours`` again here
+  // would square the credit-hour factor and inflate CGPA past 4.0.
+  //
+  // Courses with no ``grade_points`` (I, NG, W, DO, P) carry no GPA
+  // contribution and are excluded from both the numerator and the
+  // credit-hours denominator, mirroring Senate Art 90.7.4.
+  //
   // Terms whose academic standing hasn't been authorised yet are
   // treated as pending: they contribute neither SGP/SGPA nor a
   // CGPA-bearing row, because the grade set isn't finalised until the
@@ -232,8 +243,8 @@ export default function GradeReportPage() {
     let sgp = 0;
     let credits = 0;
     for (const c of t.courses) {
-      const gp = c.grade_points ?? 0;
-      sgp += gp * c.credit_hours;
+      if (c.grade_points == null) continue;
+      sgp += c.grade_points;
       credits += c.credit_hours;
     }
     runCgp += sgp;
@@ -309,8 +320,11 @@ export default function GradeReportPage() {
                           cgp: 0,
                           credits: 0,
                         };
+                        // ``grade_points`` is already credit-weighted on
+                        // the backend (see the cumulative loop above);
+                        // SGP is a plain sum, NOT another × credit_hours.
                         const sgp = term.courses.reduce(
-                          (s, c) => s + (c.grade_points ?? 0) * c.credit_hours,
+                          (s, c) => s + (c.grade_points ?? 0),
                           0,
                         );
                         return (

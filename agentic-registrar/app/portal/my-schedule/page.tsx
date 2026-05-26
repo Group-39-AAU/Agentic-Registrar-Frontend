@@ -133,6 +133,14 @@ function semesterToYear(currentSemester: number): string {
   return ROMAN_YEAR[year - 1] ?? String(year);
 }
 
+/** Academic semester (1–10) → "Year I · Sem 1" for section labels. */
+function formatYearSem(semester: number | null | undefined): string | null {
+  if (!semester || semester < 1) return null;
+  const year = Math.ceil(semester / 2);
+  const sem = ((semester - 1) % 2) + 1;
+  return `Year ${ROMAN_YEAR[year - 1] ?? String(year)} · Sem ${sem}`;
+}
+
 type ParsedSlot = ScheduleSlot & {
   day: Day;
   startMin: number;
@@ -511,6 +519,7 @@ function SectionPickerModal({
               <ul className="space-y-3">
                 {options.map((opt) => {
                   const busy = submittingId === opt.section_id;
+                  const yearSemLabel = formatYearSem(opt.semester);
                   return (
                     <li
                       key={opt.section_id}
@@ -522,6 +531,11 @@ function SectionPickerModal({
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                          {yearSemLabel ? (
+                            <span className="rounded-full bg-[#f1f3f5] px-2.5 py-1 font-semibold text-[#3a3a3a]">
+                              {yearSemLabel}
+                            </span>
+                          ) : null}
                           <span className="rounded-full bg-[#eef4fa] px-2.5 py-1 font-semibold text-[#1f5b94]">
                             Section {opt.section_code}
                           </span>

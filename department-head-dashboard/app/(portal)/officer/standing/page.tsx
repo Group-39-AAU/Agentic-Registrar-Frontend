@@ -78,21 +78,40 @@ type RosterGrade = {
   course_code: string;
   course_title: string;
   credit_hours: number;
-  letter_grade: string;
+  letter_grade: string | null;
   grade_points: number | null;
   is_dropped: boolean;
+  is_added_via_drop?: boolean;
+  // True when the course is registered (or added via add/drop) but
+  // no AUTHORISED Grade row exists yet — surfaces the all-graded
+  // gate to the DH so they can see standing can't be computed yet.
+  is_ungraded?: boolean;
 };
 type RosterStudent = {
   student_id: string;
   student_number: string;
   full_name: string;
   current_semester: number;
+  // SGPA / CGPA come from the AcademicStanding snapshot; null until
+  // a compute run has produced a standing row for this term.
   sgpa: number | null;
   cgpa: number | null;
   term_credit_hours: number;
   cumulative_credit_hours: number;
   f_count_term: number;
   has_incomplete_marks: boolean;
+  // CGPA carried over from the most recent prior authorised
+  // standing — lets the UI show an "incoming CGPA" hint while the
+  // current term is still un-computed.
+  prior_cgpa?: number | null;
+  prior_cumulative_credit_hours?: number | null;
+  prior_term_name?: string | null;
+  // Expected vs. ungraded course counts so the UI can render a
+  // coloured "X / Y graded" flag and warn that the all-graded gate
+  // will skip this student on the next compute run.
+  expected_course_count?: number;
+  ungraded_count?: number;
+  has_ungraded_courses?: boolean;
   grades_this_term: RosterGrade[];
   existing_standing: ExistingStanding | null;
 };
@@ -105,10 +124,24 @@ type RosterResponse = {
   semester: number;
   students: RosterStudent[];
 };
+type PendingGradesRow = {
+  student_id: string;
+  student_number: string;
+  full_name: string;
+  department: string | null;
+  expected_course_count: number;
+  graded_course_count: number;
+  ungraded_course_codes: string[];
+};
 type ComputeResult = {
   term_id: string;
   computed_count: number;
   skipped_count: number;
+  // Students skipped because not every registered course has an
+  // AUTHORISED grade for the term. No standing row is written for
+  // them; the DH must wait for grading to complete and re-run.
+  pending_grades_count?: number;
+  pending_grades_rows?: PendingGradesRow[];
   counts_by_status: Record<string, number>;
 };
 type QueueEntry = {
@@ -145,6 +178,22 @@ function StatusChip({ status }: { status: AcademicStatusType | null }) {
       {m.label}
     </span>
   );
+}
+
+// Convert an academic semester (1–10) to its "Year I · Sem I" form
+// so the section dropdown reads year-by-year rather than just
+// "Sem 1, Sem 3, …".
+const _ROMAN_YEAR = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+const _ROMAN_SEM = ["I", "II"];
+function fmtYearSem(semester: number | null | undefined): string {
+  if (!semester || !Number.isFinite(semester) || semester < 1) {
+    return "Year — · Sem —";
+  }
+  const yearIdx = Math.ceil(semester / 2) - 1;
+  const semIdx = (semester - 1) % 2;
+  const year = _ROMAN_YEAR[yearIdx] ?? String(yearIdx + 1);
+  const sem = _ROMAN_SEM[semIdx] ?? String(semIdx + 1);
+  return `Year ${year} · Sem ${sem}`;
 }
 
 function fmtPhase(p: string): string {
@@ -193,6 +242,9 @@ export default function StandingConsolePage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load terms."));
   }, []);
 
+  // Auto-scope to the caller's department: the backend returns just
+  // the DH's own department, so the dropdown collapses to one
+  // selection that we apply automatically.
   useEffect(() => {
     setDepartment("");
     setSections([]);
@@ -201,7 +253,12 @@ export default function StandingConsolePage() {
     setDepartments([]);
     if (!termId) return;
     apiGet<DeptOption[]>(`/api/v1/courses/standing/terms/${termId}/departments`)
-      .then(setDepartments)
+      .then((rows) => {
+        setDepartments(rows);
+        if (rows.length === 1) {
+          setDepartment(rows[0].department);
+        }
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load departments."));
   }, [termId]);
 
@@ -396,16 +453,9 @@ export default function StandingConsolePage() {
   return (
     <div className="space-y-6">
       <div className="aau-card relative overflow-hidden rounded-2xl p-6 sm:p-8">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#2f76b7]">
-          Department Head · Track C
-        </p>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.01em] text-[#1f2f40] sm:text-[28px]">
           Academic Standing
         </h1>
-        <p className="mt-2 max-w-[760px] text-[13px] text-[#5a5a5a]">
-          Drill into a term → department → section, compute Article-91 standings, then
-          authorise, override, or batch-authorise the proposals.
-        </p>
       </div>
 
       {error ? (
@@ -417,7 +467,7 @@ export default function StandingConsolePage() {
       {/* Drill-down + roster */}
       <Section
         title="Browse & compute"
-        subtitle="Pick a term with authorised grades, then narrow to a department / section."
+        subtitle="Pick a term with authorised grades, then narrow to a section. Your department is applied automatically."
         action={
           <button
             type="button"
@@ -425,11 +475,11 @@ export default function StandingConsolePage() {
             disabled={!termId || computeBusy}
             className="h-[36px] rounded-md bg-[#2f76b7] px-4 text-[12px] font-semibold text-white hover:bg-[#27689f] disabled:cursor-not-allowed disabled:bg-[#b9c6d4]"
           >
-            {computeBusy ? "Computing…" : `Compute (${computeScope})`}
+            {computeBusy ? "Computing…" : `Compute`}
           </button>
         }
       >
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a5a5a]">
               Term
@@ -450,24 +500,6 @@ export default function StandingConsolePage() {
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a5a5a]">
-              Department
-            </label>
-            <select
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              disabled={!termId || departments.length === 0}
-              className="h-[36px] w-full rounded-md border border-[#9bb0cc] bg-white px-3 text-[13px] outline-none disabled:opacity-60"
-            >
-              <option value="">All departments</option>
-              {departments.map((d) => (
-                <option key={d.department} value={d.department}>
-                  {d.department} ({d.student_count})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a5a5a]">
               Section
             </label>
             <select
@@ -479,7 +511,7 @@ export default function StandingConsolePage() {
               <option value="">Select section</option>
               {sections.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.section_code} · Sem {s.semester} ({s.enrolled_count}/{s.capacity})
+                  {s.section_code} · {fmtYearSem(s.semester)} ({s.enrolled_count})
                 </option>
               ))}
             </select>
@@ -487,20 +519,50 @@ export default function StandingConsolePage() {
         </div>
 
         {computeResult ? (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-[#cfddec] bg-[#f3f8fc] px-3 py-2 text-[12px]">
-            <span className="font-semibold text-[#1f5b94]">
-              Computed {computeResult.computed_count}
-            </span>
-            {computeResult.skipped_count > 0 ? (
-              <span className="text-[#5a5a5a]">· skipped {computeResult.skipped_count}</span>
-            ) : null}
-            {Object.entries(computeResult.counts_by_status).map(([k, v]) => (
-              <span key={k} className="inline-flex items-center gap-1">
-                <StatusChip status={k as AcademicStatusType} />
-                <span className="font-bold tabular-nums">{v}</span>
+          <>
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-[#cfddec] bg-[#f3f8fc] px-3 py-2 text-[12px]">
+              <span className="font-semibold text-[#1f5b94]">
+                Computed {computeResult.computed_count}
               </span>
-            ))}
-          </div>
+              {computeResult.skipped_count > 0 ? (
+                <span className="text-[#5a5a5a]">· skipped {computeResult.skipped_count}</span>
+              ) : null}
+              {(computeResult.pending_grades_count ?? 0) > 0 ? (
+                <span className="font-semibold text-[#8a5a00]">
+                  · pending grades {computeResult.pending_grades_count}
+                </span>
+              ) : null}
+              {Object.entries(computeResult.counts_by_status).map(([k, v]) => (
+                <span key={k} className="inline-flex items-center gap-1">
+                  <StatusChip status={k as AcademicStatusType} />
+                  <span className="font-bold tabular-nums">{v}</span>
+                </span>
+              ))}
+            </div>
+            {computeResult.pending_grades_rows && computeResult.pending_grades_rows.length > 0 ? (
+              <div className="mb-4 rounded-md border border-[#f0d9a0] bg-[#fff7e2] px-3 py-2 text-[12px] text-[#5a4500]">
+                <div className="mb-1 font-semibold text-[#8a5a00]">
+                  Skipped — waiting on grades ({computeResult.pending_grades_rows.length})
+                </div>
+                <ul className="space-y-1">
+                  {computeResult.pending_grades_rows.map((p) => (
+                    <li key={p.student_id} className="flex flex-wrap items-baseline gap-2">
+                      <span className="font-mono text-[11.5px] text-[#5a5a5a]">
+                        {p.student_number}
+                      </span>
+                      <span className="font-semibold text-[#1f2f40]">{p.full_name}</span>
+                      <span className="text-[#5a5a5a]">
+                        {p.graded_course_count}/{p.expected_course_count} graded
+                      </span>
+                      <span className="text-[#8a5a00]">
+                        · ungraded: {p.ungraded_course_codes.join(", ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </>
         ) : null}
 
         {!sectionId ? (
@@ -514,6 +576,7 @@ export default function StandingConsolePage() {
             <table className="w-full min-w-[820px] border-collapse text-left text-[13px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-[#f8fafc] text-[11px] font-semibold uppercase tracking-wide text-[#5a5a5a]">
+                  <th className="px-4 py-3 text-right">#</th>
                   <th className="px-4 py-3">Student</th>
                   <th className="px-4 py-3 text-right">SGPA</th>
                   <th className="px-4 py-3 text-right">CGPA</th>
@@ -524,11 +587,14 @@ export default function StandingConsolePage() {
                 </tr>
               </thead>
               <tbody>
-                {roster.students.map((s) => {
+                {roster.students.map((s, rosterIdx) => {
                   const open = expanded.has(s.student_id);
                   return (
                     <Fragment key={s.student_id}>
                       <tr className="border-b border-gray-100 align-top">
+                        <td className="px-4 py-3 text-right tabular-nums text-[#5a5a5a]">
+                          {rosterIdx + 1}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="text-[12.5px] font-semibold text-[#1f2f40]">
                             {s.full_name}
@@ -554,6 +620,20 @@ export default function StandingConsolePage() {
                               I/NG mark
                             </div>
                           ) : null}
+                          {s.has_ungraded_courses ? (
+                            <div
+                              className="mt-1 inline-flex items-center rounded-full border border-[#f0d9a0] bg-[#fff7e2] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#8a5a00]"
+                              title="At least one registered course has no authorised grade yet. Standing cannot be computed until all expected courses are graded."
+                            >
+                              {s.ungraded_count} ungraded
+                            </div>
+                          ) : null}
+                          {s.prior_cgpa != null && !s.existing_standing ? (
+                            <div className="mt-1 text-[10.5px] text-[#5a5a5a]">
+                              Incoming CGPA {s.prior_cgpa.toFixed(2)}
+                              {s.prior_term_name ? ` · ${s.prior_term_name}` : ""}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <button
@@ -568,24 +648,54 @@ export default function StandingConsolePage() {
                             }
                             className="text-[12px] font-semibold text-[#2f76b7] hover:underline"
                           >
-                            {open ? "Hide" : `${s.grades_this_term.length} courses`}
+                            {open
+                              ? "Hide"
+                              : s.expected_course_count != null
+                                ? `${s.grades_this_term.length} courses (${(s.expected_course_count ?? 0) - (s.ungraded_count ?? 0)}/${s.expected_course_count} graded)`
+                                : `${s.grades_this_term.length} courses`}
                           </button>
                         </td>
                       </tr>
                       {open ? (
                         <tr className="border-b border-gray-100 bg-[#fbfdff]">
-                          <td colSpan={7} className="px-4 py-3">
+                          <td colSpan={8} className="px-4 py-3">
                             <div className="flex flex-wrap gap-2">
-                              {s.grades_this_term.map((g, i) => (
-                                <span
-                                  key={`${s.student_id}-g-${i}`}
-                                  className={`rounded-md border px-2 py-1 text-[11.5px] ${g.is_dropped ? "border-gray-200 bg-gray-50 text-gray-400 line-through" : "border-[#dde6ef] bg-white text-[#3a3a3a]"}`}
-                                >
-                                  <span className="font-mono font-semibold">{g.course_code}</span>{" "}
-                                  {g.letter_grade}{" "}
-                                  <span className="text-[#8a8a8a]">({g.credit_hours}cr)</span>
-                                </span>
-                              ))}
+                              {s.grades_this_term.map((g, i) => {
+                                let chipCls =
+                                  "border-[#dde6ef] bg-white text-[#3a3a3a]";
+                                if (g.is_dropped) {
+                                  chipCls =
+                                    "border-gray-200 bg-gray-50 text-gray-400 line-through";
+                                } else if (g.is_ungraded) {
+                                  chipCls =
+                                    "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]";
+                                } else if (g.is_added_via_drop) {
+                                  chipCls =
+                                    "border-[#cdbdf0] bg-[#f3edfb] text-[#5f3aa0]";
+                                }
+                                const label = g.is_ungraded
+                                  ? "ungraded"
+                                  : (g.letter_grade ?? "—");
+                                return (
+                                  <span
+                                    key={`${s.student_id}-g-${i}`}
+                                    className={`rounded-md border px-2 py-1 text-[11.5px] ${chipCls}`}
+                                    title={
+                                      g.is_ungraded
+                                        ? "Registered for this course but no authorised grade yet"
+                                        : g.is_added_via_drop
+                                          ? "Picked up via add/drop"
+                                          : g.is_dropped
+                                            ? "Dropped during add/drop"
+                                            : undefined
+                                    }
+                                  >
+                                    <span className="font-mono font-semibold">{g.course_code}</span>{" "}
+                                    {label}{" "}
+                                    <span className="text-[#8a8a8a]">({g.credit_hours}cr)</span>
+                                  </span>
+                                );
+                              })}
                             </div>
                           </td>
                         </tr>
@@ -656,6 +766,7 @@ export default function StandingConsolePage() {
                       onChange={toggleSelAll}
                     />
                   </th>
+                  <th className="px-3 py-3 text-right">#</th>
                   <th className="px-4 py-3">Student</th>
                   <th className="px-4 py-3">Department</th>
                   <th className="px-4 py-3 text-right">SGPA</th>
@@ -666,7 +777,7 @@ export default function StandingConsolePage() {
                 </tr>
               </thead>
               <tbody>
-                {queue.map((q) => {
+                {queue.map((q, queueIdx) => {
                   const decided = q.final_status != null;
                   return (
                     <tr key={q.id} className="border-b border-gray-100 align-top hover:bg-[#eef4ff]/50">
@@ -678,6 +789,9 @@ export default function StandingConsolePage() {
                             onChange={() => toggleSel(q.id)}
                           />
                         ) : null}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-[#5a5a5a]">
+                        {queueIdx + 1}
                       </td>
                       <td className="px-4 py-3">
                         <div className="text-[12.5px] font-semibold text-[#1f2f40]">{q.full_name}</div>

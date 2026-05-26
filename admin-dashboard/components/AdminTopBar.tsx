@@ -21,7 +21,7 @@ const COURSE_MANAGEMENT_HREF = "/officer/terms";
 
 const COURSE_MANAGEMENT_LINKS: NavLink[] = [
   { href: "/officer/terms", label: "Terms" },
-  { href: "/officer/add-drop", label: "Add / Drop" },
+  // Add / Drop moved to the Department-Head dashboard.
   // Grade Authorisation hidden for now — re-enable when ready.
   { href: "/officer/exceptions", label: "Exception Queue" },
 ];

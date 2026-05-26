@@ -7,6 +7,7 @@ import { useState } from "react";
 const GRADING_HREF = "/officer/grading";
 const STANDING_HREF = "/officer/standing";
 const SCHEDULING_HREF = "/officer";
+const ADD_DROP_HREF = "/officer/add-drop";
 
 function AAULogoSmall() {
   return (
@@ -36,11 +37,13 @@ export default function AdminTopBar() {
 
   const gradingActive = pathname.startsWith(GRADING_HREF);
   const standingActive = pathname.startsWith(STANDING_HREF);
-  // Match /officer and /officer/sections/* but NOT /officer/grading or /officer/standing.
+  const addDropActive = pathname.startsWith(ADD_DROP_HREF);
+  // Match /officer and /officer/sections/* but NOT the other named tabs.
   const schedulingActive =
     (pathname === SCHEDULING_HREF || pathname.startsWith("/officer/sections")) &&
     !gradingActive &&
-    !standingActive;
+    !standingActive &&
+    !addDropActive;
 
   function handleLogout() {
     localStorage.removeItem("admin_dashboard_logged_in");
@@ -71,6 +74,22 @@ export default function AdminTopBar() {
           >
             Scheduling
             {schedulingActive ? (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-2 -bottom-[18px] h-[2px] rounded-t bg-[linear-gradient(90deg,transparent,#2f76b7,transparent)]"
+              />
+            ) : null}
+          </Link>
+          <Link
+            href={ADD_DROP_HREF}
+            className={`relative inline-flex items-center rounded-md px-3 py-2 uppercase transition-colors ${
+              addDropActive
+                ? "text-[#2f76b7]"
+                : "hover:bg-[#2f76b7]/[0.06] hover:text-[#2f76b7]"
+            }`}
+          >
+            Add / Drop
+            {addDropActive ? (
               <span
                 aria-hidden="true"
                 className="absolute inset-x-2 -bottom-[18px] h-[2px] rounded-t bg-[linear-gradient(90deg,transparent,#2f76b7,transparent)]"
@@ -162,6 +181,17 @@ export default function AdminTopBar() {
             }`}
           >
             Scheduling
+          </Link>
+          <Link
+            href={ADD_DROP_HREF}
+            onClick={() => setMobileOpen(false)}
+            className={`mt-1 rounded-md px-3 py-2.5 text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors ${
+              addDropActive
+                ? "bg-[#2f76b7]/[0.08] text-[#2f76b7]"
+                : "text-[#384457] hover:bg-black/[0.03]"
+            }`}
+          >
+            Add / Drop
           </Link>
           <Link
             href={GRADING_HREF}
