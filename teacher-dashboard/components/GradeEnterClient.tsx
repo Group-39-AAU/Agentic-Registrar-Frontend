@@ -14,6 +14,7 @@ import {
   justifyBatch,
   listAgentReviews,
   reopenBatch,
+  rerunAgent,
   submitBatch,
   upsertBreakdown,
   upsertScores,
@@ -42,14 +43,16 @@ function StatusPill({ status }: { status: GradeBatch["status"] }) {
     DRAFT: "border-gray-300 bg-gray-50 text-gray-600",
     SUBMITTED: "border-[#cfddec] bg-[#eef4fa] text-[#1f5b94]",
     FLAGGED: "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]",
+    AI_UNAVAILABLE: "border-[#d4c5e8] bg-[#f3eefa] text-[#5b3a87]",
     REJECTED: "border-[#f0bcbc] bg-[#fdebeb] text-[#a31a1a]",
     AUTHORISED: "border-[#cae6cf] bg-[#ecf8ef] text-[#1f7a3a]",
   };
+  const label = status === "AI_UNAVAILABLE" ? "AI Unavailable" : status;
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ${map[status]}`}
     >
-      {status}
+      {label}
     </span>
   );
 }
@@ -228,6 +231,7 @@ export default function GradeEnterClient() {
   const [justifyText, setJustifyText] = useState("");
   const [justifyBusy, setJustifyBusy] = useState(false);
   const [reopenBusy, setReopenBusy] = useState(false);
+  const [rerunBusy, setRerunBusy] = useState(false);
 
   const [reviews, setReviews] = useState<AgentReview[]>([]);
 
@@ -603,6 +607,34 @@ export default function GradeEnterClient() {
     }
   }
 
+  async function doRerunAgent() {
+    if (!batch) return;
+    setSubmitError(null);
+    setRerunBusy(true);
+    try {
+      const res = await rerunAgent(batch.id);
+      setSubmitResult({
+        batch_id: res.batch_id,
+        status: res.new_status,
+        iteration: res.iteration,
+        submitted_at: batch.submitted_at ?? new Date().toISOString(),
+        agent_verdict: res.agent_verdict,
+        agent_flags: res.agent_flags,
+        agent_reasoning: res.agent_reasoning,
+        grades: [],
+      });
+      await refreshBatchAndReviews(sectionId, courseId);
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        setSubmitError(e.message ?? "Could not re-run the agent.");
+      } else {
+        setSubmitError("Could not re-run the agent.");
+      }
+    } finally {
+      setRerunBusy(false);
+    }
+  }
+
   const isEditable = batch?.status === "DRAFT";
   const latestReview = reviews.length > 0 ? reviews[0] : null;
   const breakdownDraftSum = totalWeight(draftComponents);
@@ -869,8 +901,34 @@ export default function GradeEnterClient() {
                   {reopenBusy ? "Reopening…" : "Reopen for editing"}
                 </button>
               ) : null}
+
+              {batch.status === "AI_UNAVAILABLE" ? (
+                <button
+                  type="button"
+                  onClick={() => void doRerunAgent()}
+                  disabled={rerunBusy}
+                  title="The AI reviewer was unavailable on the previous run. Try again."
+                  className="h-[36px] rounded-md bg-[#5b3a87] px-4 text-[12.5px] font-semibold text-white hover:bg-[#4a2f6d] disabled:opacity-60"
+                >
+                  {rerunBusy ? "Re-running…" : "Re-run agent"}
+                </button>
+              ) : null}
             </div>
           </div>
+
+          {batch.status === "AI_UNAVAILABLE" ? (
+            <div className="rounded-xl border border-[#d4c5e8] bg-[#f3eefa] p-4 text-[12.5px] text-[#1f2f40]">
+              <h3 className="text-[14px] font-bold text-[#1f2f40]">
+                AI reviewer was unavailable
+              </h3>
+              <p className="mt-1 text-[#5a5a5a]">
+                The grading agent could not return a verdict on the last run
+                (Gemini was unreachable, timed out, or returned an unexpected
+                response). Press <strong>Re-run agent</strong> to try again.
+                Your scores and submission are preserved.
+              </p>
+            </div>
+          ) : null}
 
           {submitError ? (
             <p className="whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
