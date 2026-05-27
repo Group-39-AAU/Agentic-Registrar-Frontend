@@ -24,9 +24,10 @@ export type SubmitGradeResult =
   | { outcome: "ACCEPTED"; message?: string }
   | { outcome: "REJECTED"; feedback: string };
 
-/** Simulated latency so loading states are visible with large static data. */
+/** Artificial delay (ms) added to mock calls so loading states are visible in the UI. */
 const MS = 90;
 
+/** Simulates the AI grading-monitor review: requires a non-trivial reasoning string to accept. */
 function mockAiReview(payload: SubmitGradePayload): SubmitGradeResult {
   const reasoning = (payload.reasoning ?? "").trim();
   if (!reasoning) {
@@ -49,6 +50,7 @@ function mockAiReview(payload: SubmitGradePayload): SubmitGradeResult {
   };
 }
 
+/** Returns the teacher's courses for the given academic year and semester from static mock data. */
 export async function fetchTeacherCourses(
   academicYear: string | null | undefined,
   calendarSemester: CalendarSemesterId | null | undefined
@@ -58,11 +60,13 @@ export async function fetchTeacherCourses(
   return getTeacherCoursesForSemester(academicYear, calendarSemester);
 }
 
+/** Returns the static mock roster for a given course. */
 export async function fetchStudentsForCourse(courseId: string): Promise<CourseStudent[]> {
   await new Promise((r) => setTimeout(r, MS));
   return getMockStudents(courseId);
 }
 
+/** Submits a grade matrix for simulated AI review; acceptance depends on the reasoning length. */
 export async function submitGradeMatrix(payload: SubmitGradePayload): Promise<SubmitGradeResult> {
   await new Promise((r) => setTimeout(r, 450));
   return mockAiReview(payload);
