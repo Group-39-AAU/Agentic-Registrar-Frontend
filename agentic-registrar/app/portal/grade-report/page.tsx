@@ -420,13 +420,7 @@ export default function GradeReportPage() {
                                           term.term_gpa,
                                           term.academic_status,
                                         )}
-                                        <span className="ml-2 text-[12px] font-normal text-[#5a5a5a]">
-                                          (authorised{" "}
-                                          {new Date(
-                                            term.academic_status_authorised_at!,
-                                          ).toLocaleDateString()}
-                                          )
-                                        </span>
+                                       
                                       </>
                                     ) : (
                                       "—"
