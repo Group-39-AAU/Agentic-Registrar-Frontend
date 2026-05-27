@@ -1,18 +1,13 @@
 /**
- * Demo-only utility: generate score distributions for the
- * grade-entry page so a presenter can show the GradingMonitorAgent
- * reacting to different patterns without typing per-student values.
+ * Demo-only utility for populating grade scores without manual entry.
+ * Results are staged client-side; the presenter still submits them via
+ * the normal "Save → Submit" flow to trigger the GradingMonitorAgent.
  *
- * Purely client-side. Calls no backend endpoints — the result is
- * staged in the existing `scores` state and the presenter still has
- * to click "Save scores" + "Submit for review" to actually drive the
- * agent.
- *
- * Each mode targets a specific anomaly tool the agent runs:
- *   - z-score outliers           -> "outliers"
- *   - identical-cluster surfacer -> "identical"
- *   - distribution shape         -> "bimodal" / "generous" / "harsh"
- *   - clean baseline             -> "realistic"
+ * Mode → intended agent anomaly detector:
+ *   realistic → none (baseline APPROVE)
+ *   generous / harsh / bimodal → distribution-shape detector
+ *   identical → identical-cluster surfacer
+ *   outliers → z-score outlier detector
  */
 
 export type DemoFillMode =
@@ -61,10 +56,12 @@ const MODE_HINT: Record<DemoFillMode, string> = {
   clear: "Wipes all entered scores in the UI (no backend call).",
 };
 
+/** Short display label for a demo fill mode (e.g. shown in a dropdown). */
 export function modeLabel(mode: DemoFillMode): string {
   return MODE_LABEL[mode];
 }
 
+/** One-line tooltip describing what the agent is expected to do for this mode. */
 export function modeHint(mode: DemoFillMode): string {
   return MODE_HINT[mode];
 }
@@ -139,8 +136,8 @@ function jitterFor(mode: DemoFillMode): number {
 }
 
 /**
- * Produce a complete (student × component) score map for the given
- * mode. ``mode = "clear"`` returns a map of all-blank cells.
+ * Generates a complete (student × component) score map for the given mode.
+ * `"clear"` returns all-blank cells; all other modes produce numeric strings.
  */
 export function buildDemoScores(
   mode: DemoFillMode,
