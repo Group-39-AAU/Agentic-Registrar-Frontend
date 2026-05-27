@@ -25,10 +25,15 @@ export type GradeSubmissionRecord = {
   updatedAt: string;
 };
 
+/** localStorage key; versioned so schema changes don't silently corrupt old records. */
 const STORAGE_KEY = "teacher_dashboard_grade_submissions_v1";
 
 type StoredSubmission = GradeSubmissionRecord & { term?: unknown };
 
+/**
+ * Migrates a raw stored object to GradeSubmissionRecord.
+ * The legacy `term` field ("I"/"II") is mapped to the current calendarSemester ("1"/"2").
+ */
 function normalizeSubmission(item: unknown): GradeSubmissionRecord | null {
   if (!item || typeof item !== "object") return null;
   const o = item as StoredSubmission;
@@ -59,14 +64,17 @@ function writeAll(items: GradeSubmissionRecord[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
+/** Returns all stored submissions sorted newest-first by `updatedAt`. */
 export function listSubmissions(): GradeSubmissionRecord[] {
   return readAll().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 
+/** Finds a single submission by its ID, or returns `null` if not found. */
 export function getSubmission(id: string): GradeSubmissionRecord | null {
   return readAll().find((s) => s.id === id) ?? null;
 }
 
+/** Inserts the record if new, or replaces the existing entry with the same ID. */
 export function upsertSubmission(record: GradeSubmissionRecord) {
   const all = readAll();
   const idx = all.findIndex((s) => s.id === record.id);
@@ -75,6 +83,7 @@ export function upsertSubmission(record: GradeSubmissionRecord) {
   writeAll(all);
 }
 
+/** Generates a collision-resistant submission ID using timestamp + random suffix. */
 export function newSubmissionId(): string {
   return `gs_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
