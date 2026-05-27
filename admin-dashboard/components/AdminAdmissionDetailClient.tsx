@@ -375,6 +375,38 @@ export default function AdminAdmissionDetailClient({ applicationId }: { applicat
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge value={data.current_status} kind="status" />
               <StatusBadge value={data.payment_status} kind="payment" />
+              {(data.current_status ?? "").toUpperCase() === "FLAGGED_FOR_REVIEW" ? (
+                <Link
+                  href={`/flags?id=${encodeURIComponent(data.id)}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#f0d9a0] bg-[linear-gradient(180deg,#fff7e2_0%,#fce9b9_100%)] px-3 py-1.5 text-[12px] font-semibold text-[#8a5a00] shadow-[0_1px_2px_rgba(15,23,42,0.05),0_6px_14px_-10px_rgba(138,90,0,0.5)] transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_2px_4px_rgba(15,23,42,0.08),0_12px_20px_-10px_rgba(138,90,0,0.7)]"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 22V4M4 4l13 4-3 4 3 4H4" />
+                  </svg>
+                  Open in flagged review
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-3 w-3 opacity-70"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
+                </Link>
+              ) : null}
             </div>
           </div>
           <p className="mt-2 text-[13px] text-[#5a5a5a]">{termText(data.admission_term)}</p>

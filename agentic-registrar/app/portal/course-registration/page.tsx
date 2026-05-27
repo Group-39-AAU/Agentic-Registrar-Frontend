@@ -304,10 +304,12 @@ function CourseRegistrationPageInner() {
       </main>
       <PortalFooter />
 
-      {/* Floating AI advisor — appears as soon as the student has
-          picked an academic year + calendar semester, so they can
-          consult before clicking through to course selection. */}
-      {selectedTerm ? <AdvisoryConsultPanel termId={selectedTerm.id} /> : null}
+      {/* Floating AI advisor — only when the picked term is open and the
+          student hasn't just completed registration. Pre-registration
+          consult is only useful before the student commits to courses. */}
+      {selectedTerm && selectedTerm.is_open && !justRegistered ? (
+        <AdvisoryConsultPanel termId={selectedTerm.id} />
+      ) : null}
     </div>
   );
 }

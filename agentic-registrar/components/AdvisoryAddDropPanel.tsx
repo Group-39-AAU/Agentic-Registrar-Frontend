@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ApiError,
   consultAddDrop,
   type AdvisoryRecommendation,
 } from "@/lib/api";
@@ -35,19 +34,6 @@ function riskStyles(risk: string): { bg: string; text: string; label: string } {
     return { bg: "bg-[#fde0e0]", text: "text-[#a31a1a]", label: "High risk" };
   }
   return { bg: "bg-[#eef2f6]", text: "text-[#1f5b94]", label: risk || "—" };
-}
-
-function describeError(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.status === 404) {
-      return "You don't have an active registration for this term, so add/drop advice isn't available.";
-    }
-    return err.message && err.message !== "Request failed"
-      ? `${err.status}: ${err.message}`
-      : `Request failed with status ${err.status}`;
-  }
-  if (err instanceof Error) return err.message;
-  return "Could not reach the advisor.";
 }
 
 function PickerSection({
@@ -190,8 +176,8 @@ export default function AdvisoryAddDropPanel({
           : {};
       const data = await consultAddDrop(body);
       setRecommendation(data);
-    } catch (err: unknown) {
-      setError(describeError(err));
+    } catch {
+      setError("Agent is unavailable, try again.");
     } finally {
       setLoading(false);
     }

@@ -387,43 +387,54 @@ export default function GradeReportPage() {
                               </table>
                             )}
 
-                            <div className="m-4 rounded-[8px] border border-[#dedede] bg-[#ffffff] px-4 py-2 md:my-[50px] md:px-[80px]">
-                              <div className="inline-grid grid-cols-1 gap-x-8 gap-y-1 md:grid-cols-2 md:gap-x-[100px]">
-                                <p className="font-semibold">
-                                  SGP : {formatNumber(sgp)}
-                                </p>
-                                <p className="font-semibold">
-                                  SGPA : {formatNumber(term.term_gpa)}
-                                </p>
-                                <p className="font-semibold">
-                                  CGP : {formatNumber(totals.cgp)}
-                                </p>
-                                <p className="font-semibold">
-                                  CGPA :{" "}
-                                  {formatNumber(
-                                    totals.credits > 0
-                                      ? totals.cgp / totals.credits
-                                      : null,
-                                  )}
-                                </p>
-                              </div>
-                              <p className="mt-6 font-semibold">
-                                Academic Status :{" "}
-                                {academicStatus(
-                                  term.term_gpa,
-                                  term.academic_status,
-                                )}
-                                {term.academic_status_authorised_at ? (
-                                  <span className="ml-2 text-[12px] font-normal text-[#5a5a5a]">
-                                    (authorised{" "}
-                                    {new Date(
-                                      term.academic_status_authorised_at,
-                                    ).toLocaleDateString()}
-                                    )
-                                  </span>
-                                ) : null}
-                              </p>
-                            </div>
+                            {(() => {
+                              const isAuthorised = !!term.academic_status_authorised_at;
+                              return (
+                                <div className="m-4 rounded-[8px] border border-[#dedede] bg-[#ffffff] px-4 py-2 md:my-[50px] md:px-[80px]">
+                                  <div className="inline-grid grid-cols-1 gap-x-8 gap-y-1 md:grid-cols-2 md:gap-x-[100px]">
+                                    <p className="font-semibold">
+                                      SGP : {isAuthorised ? formatNumber(sgp) : "—"}
+                                    </p>
+                                    <p className="font-semibold">
+                                      SGPA : {isAuthorised ? formatNumber(term.term_gpa) : "—"}
+                                    </p>
+                                    <p className="font-semibold">
+                                      CGP : {isAuthorised ? formatNumber(totals.cgp) : "—"}
+                                    </p>
+                                    <p className="font-semibold">
+                                      CGPA :{" "}
+                                      {isAuthorised
+                                        ? formatNumber(
+                                            totals.credits > 0
+                                              ? totals.cgp / totals.credits
+                                              : null,
+                                          )
+                                        : "—"}
+                                    </p>
+                                  </div>
+                                  <p className="mt-6 font-semibold">
+                                    Academic Status :{" "}
+                                    {isAuthorised ? (
+                                      <>
+                                        {academicStatus(
+                                          term.term_gpa,
+                                          term.academic_status,
+                                        )}
+                                        <span className="ml-2 text-[12px] font-normal text-[#5a5a5a]">
+                                          (authorised{" "}
+                                          {new Date(
+                                            term.academic_status_authorised_at!,
+                                          ).toLocaleDateString()}
+                                          )
+                                        </span>
+                                      </>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </p>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
