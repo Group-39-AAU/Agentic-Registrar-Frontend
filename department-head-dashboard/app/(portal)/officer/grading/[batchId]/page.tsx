@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -252,6 +253,7 @@ function VerdictPill({ verdict }: { verdict: AgentVerdict | null }) {
 }
 
 export default function OfficerGradingBatchDetail() {
+  usePageTitle("Grading Batch");
   const params = useParams<{ batchId: string }>();
   const batchId = params?.batchId ?? "";
   const [packet, setPacket] = useState<ReviewPacket | null>(null);

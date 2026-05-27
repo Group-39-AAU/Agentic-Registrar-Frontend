@@ -73,8 +73,21 @@ function AssessmentResultModal({
   }, [onClose]);
 
   const components = course.has_breakdown ? course.components : [];
-  const totalRaw = components.reduce((s, c) => s + (c.score ?? 0), 0);
-  const totalMax = components.reduce((s, c) => s + c.max_score, 0);
+  // "Result" is the weighted contribution — score scaled to the
+  // component's weight. Teachers commonly enter an out-of-N max that
+  // differs from the weight (e.g. final exam out of 60 but worth 50%
+  // of the grade); displaying the raw entry would mislead the student.
+  // Fall back to raw score when the backend hasn't computed a contribution.
+  const weightedFor = (c: { weight: number; max_score: number; score: number | null; weighted_contribution: number | null }): number | null => {
+    if (c.weighted_contribution != null) return c.weighted_contribution;
+    if (c.score == null || c.max_score <= 0) return null;
+    return (c.score / c.max_score) * c.weight;
+  };
+  const totalWeighted = components.reduce(
+    (s, c) => s + (weightedFor(c) ?? 0),
+    0,
+  );
+  const totalWeight = components.reduce((s, c) => s + c.weight, 0);
 
   return (
     <div
@@ -139,28 +152,39 @@ function AssessmentResultModal({
                 </tr>
               </thead>
               <tbody>
-                {components.map((c, idx) => (
-                  <tr
-                    key={`${course.course_id}-${idx}`}
-                    className={idx % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}
-                  >
-                    <td className="border border-[#d9d9d9] px-3 py-2">
-                      {idx + 1}
-                    </td>
-                    <td className="border border-[#d9d9d9] px-4 py-2">
-                      {c.name} ( {c.weight}% )
-                    </td>
-                    <td className="border border-[#d9d9d9] px-3 py-2 tabular-nums">
-                      {c.score == null ? "—" : c.score}
-                    </td>
-                  </tr>
-                ))}
+                {components.map((c, idx) => {
+                  const weighted = weightedFor(c);
+                  // Show "(raw / max)" alongside the weighted result only
+                  // when the teacher's max differs from the weight — otherwise
+                  // it's redundant noise.
+                  const showRaw =
+                    c.score != null && c.max_score > 0 && c.max_score !== c.weight;
+                  return (
+                    <tr
+                      key={`${course.course_id}-${idx}`}
+                      className={idx % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}
+                    >
+                      <td className="border border-[#d9d9d9] px-3 py-2">
+                        {idx + 1}
+                      </td>
+                      <td className="border border-[#d9d9d9] px-4 py-2">
+                        {c.name} ( {c.weight}% )
+                      </td>
+                      <td className="border border-[#d9d9d9] px-3 py-2 tabular-nums">
+                        {weighted == null
+                          ? "—"
+                          : formatNumber(weighted, weighted % 1 === 0 ? 0 : 2)}
+                        
+                      </td>
+                    </tr>
+                  );
+                })}
                 <tr className="bg-[linear-gradient(180deg,#dff0db_0%,#cee2c5_100%)] text-[#1f1f1f]">
                   <td
                     colSpan={3}
                     className="border border-[#d9d9d9] px-4 py-2 text-right font-semibold"
                   >
-                    Total Mark : {formatNumber(totalRaw, totalRaw % 1 === 0 ? 0 : 2)} / {totalMax}
+                    Total Mark : {formatNumber(totalWeighted, totalWeighted % 1 === 0 ? 0 : 2)} / {totalWeight}
                   </td>
                 </tr>
               </tbody>

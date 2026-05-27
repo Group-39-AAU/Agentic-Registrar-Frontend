@@ -7,6 +7,7 @@ import {
   callApi,
   initialState,
 } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -263,6 +264,7 @@ function MetricCard({
 }
 
 export default function OfficerPage() {
+  usePageTitle("Sections & Schedule");
   const [terms, setTerms] = useState<CourseTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);

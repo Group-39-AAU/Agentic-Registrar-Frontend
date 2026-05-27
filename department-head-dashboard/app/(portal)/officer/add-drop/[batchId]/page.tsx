@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -197,6 +198,7 @@ function VerdictBadge({ passed }: { passed: boolean }) {
 }
 
 export default function DepartmentHeadAddDropBatchDetail() {
+  usePageTitle("Add/Drop Batch");
   const params = useParams<{ batchId: string }>();
   const batchId = params?.batchId ?? "";
 

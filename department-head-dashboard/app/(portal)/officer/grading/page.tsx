@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -161,6 +162,7 @@ function VerdictPill({ verdict }: { verdict: AgentVerdict | null }) {
 }
 
 export default function OfficerGradingQueuePage() {
+  usePageTitle("Grade Authorisation");
   const router = useRouter();
   const [terms, setTerms] = useState<CourseTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);

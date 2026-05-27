@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -204,6 +205,7 @@ function fmtGpa(v: number | null | undefined): string {
 }
 
 export default function StandingConsolePage() {
+  usePageTitle("Academic Standing");
   // Drill-down state
   const [terms, setTerms] = useState<StandingTerm[]>([]);
   const [termId, setTermId] = useState("");

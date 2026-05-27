@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import TeacherFooter from "@/components/TeacherFooter";
+import { usePageTitle } from "@/components/usePageTitle";
 import { ApiError, loginTeacher, setTeacherToken } from "@/lib/gradingApi";
 
 function LoginTopBrand() {
@@ -22,6 +23,7 @@ function LoginTopBrand() {
 }
 
 export default function TeacherLoginPage() {
+  usePageTitle("Sign in");
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");

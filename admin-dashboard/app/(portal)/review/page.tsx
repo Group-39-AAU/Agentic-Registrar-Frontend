@@ -2,6 +2,7 @@
 
 import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
 import Pagination from "@/components/Pagination";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo } from "react";
 import { useState } from "react";
@@ -59,6 +60,7 @@ const SPONSORSHIP_FILTER_LABELS: Record<"SELF_SPONSORED" | "GOVERNMENT", string>
 };
 
 export default function ReviewPage() {
+  usePageTitle("Review");
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sponsorshipFilter, setSponsorshipFilter] = useState<SponsorshipFilter>("ALL");

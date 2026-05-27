@@ -2,6 +2,7 @@
 
 import { RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
 import Pagination from "@/components/Pagination";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** Matches GET /api/v1/undergraduate/enrollment/list/all paginated body */
@@ -43,6 +44,7 @@ function toTermText(value: unknown): string {
 }
 
 export default function EnrollmentPage() {
+  usePageTitle("Enrollment");
   const [runResult, setRunResult] = useState<RequestState>(initialState);
   const [listResult, setListResult] = useState<RequestState>(initialState);
   const [terms, setTerms] = useState<AdmissionTerm[]>([]);

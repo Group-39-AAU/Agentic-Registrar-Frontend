@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import AdminAdmissionDetailClient from "@/components/AdminAdmissionDetailClient";
+
+export const metadata: Metadata = { title: "Application Detail" };
 
 type Props = { params: Promise<{ id: string }> };
 

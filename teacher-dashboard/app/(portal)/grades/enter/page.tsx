@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import GradeEnterClient from "@/components/GradeEnterClient";
+
+export const metadata: Metadata = { title: "Enter Grades" };
 
 export default function EnterGradesPage() {
   return (

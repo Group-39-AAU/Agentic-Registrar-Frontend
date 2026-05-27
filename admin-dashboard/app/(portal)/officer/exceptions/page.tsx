@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -69,6 +70,7 @@ function resolveClientRoute(entry: ExceptionEntry): string | null {
 }
 
 export default function OfficerExceptionQueuePage() {
+  usePageTitle("Exception Queue");
   const router = useRouter();
   const [entries, setEntries] = useState<ExceptionEntry[]>([]);
   const [loading, setLoading] = useState(false);

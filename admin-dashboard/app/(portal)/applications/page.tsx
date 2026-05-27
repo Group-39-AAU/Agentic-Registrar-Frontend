@@ -2,6 +2,7 @@
 
 import { JsonResult, RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
 import Pagination from "@/components/Pagination";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -69,6 +70,7 @@ function toTermText(value: unknown): string {
 }
 
 export default function ApplicationsPage() {
+  usePageTitle("Applications");
   const router = useRouter();
   const [applications, setApplications] = useState<RequestState>(initialState);
   const [terms, setTerms] = useState<AdmissionTerm[]>([]);

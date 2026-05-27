@@ -8,6 +8,7 @@ import {
   type CourseTerm,
   type InstructorScheduleSlot,
 } from "@/lib/gradingApi";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useEffect, useMemo, useState } from "react";
 
 const DAY_ORDER = [
@@ -325,6 +326,7 @@ function WeeklyGrid({ slots }: { slots: InstructorScheduleSlot[] }) {
 }
 
 export default function TeacherSchedulePage() {
+  usePageTitle("Schedule");
   const [terms, setTerms] = useState<CourseTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);
