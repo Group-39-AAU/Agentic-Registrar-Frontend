@@ -50,7 +50,13 @@ const DECISION_OPTIONS: Array<{ value: HumanDecision; label: string; helper: str
 
 type DecisionTarget =
   | { mode: "single"; applicationId: string }
-  | { mode: "batch"; applicationIds: string[] };
+  | { mode: "batch"; applicationIds: string[] }
+  | { mode: "batchAll"; pendingCount: number; sponsorshipType: "SELF_SPONSORED" | "GOVERNMENT" };
+
+const SPONSORSHIP_FILTER_LABELS: Record<"SELF_SPONSORED" | "GOVERNMENT", string> = {
+  SELF_SPONSORED: "Self-sponsored",
+  GOVERNMENT: "Government",
+};
 
 export default function ReviewPage() {
   const router = useRouter();
@@ -74,6 +80,8 @@ export default function ReviewPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [serverTotal, setServerTotal] = useState(0);
+  /** PENDING_REVIEW count for the selected sponsorship queue (ignores page/AI filters). */
+  const [pendingReviewTotal, setPendingReviewTotal] = useState(0);
 
   const loadStudents = useCallback(async () => {
     setStudents({ loading: true, error: null, data: null });
@@ -129,11 +137,41 @@ export default function ReviewPage() {
     }
   }, [aiDecisionFilter, sponsorshipFilter, page, pageSize]);
 
+  const loadPendingReviewTotal = useCallback(async () => {
+    if (sponsorshipFilter === "ALL") {
+      setPendingReviewTotal(0);
+      return;
+    }
+    try {
+      const token = localStorage.getItem("admin_dashboard_token") ?? "";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const url = new URL(`${base}/api/v1/undergraduate/review/students`);
+      url.searchParams.set("sponsorship_type", sponsorshipFilter);
+      url.searchParams.set("page", "1");
+      url.searchParams.set("page_size", "1");
+
+      const res = await fetch(url.toString(), { headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const total =
+        data && typeof data === "object" && typeof (data as { total?: unknown }).total === "number"
+          ? (data as { total: number }).total
+          : 0;
+      setPendingReviewTotal(total);
+    } catch {
+      /* keep previous total */
+    }
+  }, [sponsorshipFilter]);
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadStudents();
+      void loadPendingReviewTotal();
     });
-  }, [loadStudents]);
+  }, [loadStudents, loadPendingReviewTotal]);
 
   // The server already filters by sponsorship + sorts by rank and
   // returns only the requested page slice, so the rendered rows ARE
@@ -171,6 +209,18 @@ export default function ReviewPage() {
     setDecisionTarget({ mode: "batch", applicationIds: [...selectedIds] });
   };
 
+  const openDecideAll = () => {
+    if (sponsorshipFilter === "ALL" || pendingReviewTotal === 0) return;
+    setDecisionValue("ADMIT");
+    setDecisionRemarks("");
+    setDecisionFormError(null);
+    setDecisionTarget({
+      mode: "batchAll",
+      pendingCount: pendingReviewTotal,
+      sponsorshipType: sponsorshipFilter,
+    });
+  };
+
   const closeDecisionDialog = () => {
     if (decisionSubmitting) return;
     setDecisionTarget(null);
@@ -198,7 +248,7 @@ export default function ReviewPage() {
             justification_remarks: trimmedRemarks,
           }
         );
-      } else {
+      } else if (decisionTarget.mode === "batch") {
         await callApi(setDecisionResult, "/api/v1/undergraduate/review/decide/batch", "POST", {
           decisions: decisionTarget.applicationIds.map((application_id) => ({
             application_id,
@@ -207,9 +257,22 @@ export default function ReviewPage() {
           })),
         });
         setSelectedIds([]);
+      } else {
+        await callApi(
+          setDecisionResult,
+          "/api/v1/undergraduate/review/decide/batch/all",
+          "POST",
+          {
+            human_decision: decisionValue,
+            justification_remarks: trimmedRemarks,
+            sponsorship_type: decisionTarget.sponsorshipType,
+          },
+        );
+        setSelectedIds([]);
       }
       setDecisionTarget(null);
       await loadStudents();
+      await loadPendingReviewTotal();
     } finally {
       setDecisionSubmitting(false);
     }
@@ -221,7 +284,8 @@ export default function ReviewPage() {
         title="Students For Review"
         subtitle="Both sponsorship queues load together. Filter by sponsorship client-side; filter by AI decision via the API (optional query parameter)."
       >
-        <div className="mb-4 flex flex-wrap items-end gap-4">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1">
             <label htmlFor="sponsorship-filter" className="text-[12px] font-semibold text-[#3a3a3a]">
               Sponsorship
@@ -261,6 +325,26 @@ export default function ReviewPage() {
               ))}
             </select>
           </div>
+          </div>
+          <button
+            type="button"
+            onClick={openDecideAll}
+            disabled={
+              sponsorshipFilter === "ALL" || pendingReviewTotal === 0 || students.loading
+            }
+            title={
+              sponsorshipFilter === "ALL"
+                ? "Select Self-sponsored or Government to decide all in that queue"
+                : pendingReviewTotal === 0
+                  ? "No students awaiting review in this sponsorship queue"
+                  : `Apply one decision to all ${pendingReviewTotal} ${SPONSORSHIP_FILTER_LABELS[sponsorshipFilter]} pending review applications`
+            }
+            className="h-[36px] shrink-0 rounded-md border border-[#3f79b5] bg-white px-4 text-[13px] font-semibold text-[#2f76b7] hover:bg-[#eef4ff] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {sponsorshipFilter === "ALL"
+              ? "Decide All"
+              : `Decide All (${pendingReviewTotal})`}
+          </button>
         </div>
 
         {selectedIds.length > 0 ? (
@@ -496,8 +580,14 @@ function DecisionDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
-  const isBatch = target.mode === "batch";
-  const count = isBatch ? target.applicationIds.length : 1;
+  const isBatchAll = target.mode === "batchAll";
+  const isBatch = target.mode === "batch" || isBatchAll;
+  const count =
+    target.mode === "batch"
+      ? target.applicationIds.length
+      : target.mode === "batchAll"
+        ? target.pendingCount
+        : 1;
 
   return (
     <div
@@ -513,17 +603,21 @@ function DecisionDialog({
       >
         <div className="border-b border-gray-100 bg-gradient-to-r from-[#f0f6fc] to-white px-6 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5a5a5a]">
-            {isBatch ? "Batch decision" : "Single decision"}
+            {isBatchAll ? "Decide all" : isBatch ? "Batch decision" : "Single decision"}
           </p>
           <h2 id="decision-dialog-title" className="mt-1 text-[18px] font-bold text-[#1a1a1a]">
-            {isBatch
-              ? `Decide ${count} student${count > 1 ? "s" : ""}`
-              : "Decide this student"}
+            {isBatchAll
+              ? `Decide all ${count} ${SPONSORSHIP_FILTER_LABELS[target.sponsorshipType]} student${count > 1 ? "s" : ""}`
+              : isBatch
+                ? `Decide ${count} student${count > 1 ? "s" : ""}`
+                : "Decide this student"}
           </h2>
           <p className="mt-1 text-[12px] text-[#5a5a5a]">
-            {isBatch
-              ? "Selected decision and remarks will be applied to every selected student."
-              : "Select a decision and provide a justification for the audit trail."}
+            {isBatchAll
+              ? `This applies to every ${SPONSORSHIP_FILTER_LABELS[target.sponsorshipType].toLowerCase()} application in pending review, not only the current page.`
+              : isBatch
+                ? "Selected decision and remarks will be applied to every selected student."
+                : "Select a decision and provide a justification for the audit trail."}
           </p>
         </div>
 
@@ -580,9 +674,11 @@ function DecisionDialog({
               className="w-full rounded-md border border-[#9bb0cc] bg-[#f8fafc] px-3 py-2 text-[13px] outline-none focus:border-[#3f79b5]"
             />
             <p className="mt-1 text-[11px] text-[#5a5a5a]">
-              {isBatch
-                ? "Same remarks will be sent for every selected student."
-                : "Required to record the rationale for this decision."}
+              {isBatchAll
+                ? `Same decision and remarks will be recorded for every ${SPONSORSHIP_FILTER_LABELS[target.sponsorshipType].toLowerCase()} pending review application.`
+                : isBatch
+                  ? "Same remarks will be sent for every selected student."
+                  : "Required to record the rationale for this decision."}
             </p>
           </div>
 
@@ -614,7 +710,9 @@ function DecisionDialog({
             {submitting
               ? "Submitting…"
               : isBatch
-                ? `Submit (${count})`
+                ? isBatchAll
+                  ? `Submit all (${count})`
+                  : `Submit (${count})`
                 : "Submit decision"}
           </button>
         </div>
