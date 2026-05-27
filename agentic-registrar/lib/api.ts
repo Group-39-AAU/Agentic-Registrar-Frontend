@@ -57,7 +57,38 @@ export class ApiError extends Error {
   ) {
     super(getApiErrorMessage(body));
     this.name = "ApiError";
+    // Auto-logout on 403. Backend uses 403 when the bearer token is
+    // missing/invalid/expired (FastAPI HTTPBearer default) or when the
+    // must_change_password lockout is in effect — in every one of those
+    // cases the only way forward is to sign in again. Login itself
+    // returns 401 on bad credentials, so this won't fire on the login
+    // page. Guarded so it never runs during SSR or on a page where no
+    // token was ever stored (avoids redirect loops on public routes).
+    if (
+      status === 403 &&
+      typeof window !== "undefined" &&
+      (getStoredStudentAccessToken() || getStoredAccessToken())
+    ) {
+      handleForbiddenLogout();
+    }
   }
+}
+
+let _forbiddenLogoutInFlight = false;
+
+function handleForbiddenLogout(): void {
+  if (_forbiddenLogoutInFlight) return;
+  _forbiddenLogoutInFlight = true;
+  clearStoredStudentAccessToken();
+  clearStoredAccessToken();
+  try {
+    window.dispatchEvent(new Event("aau-auth-changed"));
+  } catch {
+    // ignore — event dispatch is best-effort
+  }
+  // Hard navigation drops any in-memory React state that may have been
+  // hydrated against the now-cleared token.
+  window.location.replace("/");
 }
 
 export function getApiErrorMessage(body: unknown): string {
