@@ -2,6 +2,7 @@
 
 import { Section } from "@/components/ApiHelpers";
 import Pagination from "@/components/Pagination";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -164,8 +165,10 @@ function initials(row: FlaggedApplication): string {
 
 // ── Page ─────────────────────────────────────────────────────────
 export default function FlagsPage() {
+  const searchParams = useSearchParams();
+  const requestedId = searchParams.get("id") ?? "";
   const [queue, setQueue] = useState<RequestState<FlaggedApplication[]>>(initialState);
-  const [selectedApplicationId, setSelectedApplicationId] = useState<string>("");
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string>(requestedId);
   const [contextState, setContextState] = useState<RequestState<FlagContext>>(initialState);
   const [resolveState, setResolveState] = useState<RequestState<FlaggedApplication>>(initialState);
   const [action, setAction] = useState<Action>("APPROVE_AND_CONTINUE");
@@ -197,6 +200,10 @@ export default function FlagsPage() {
         setQueue({ loading: false, error: null, data: rows });
         setSelectedApplicationId((prev) => {
           if (!rows.length) return "";
+          // Honor an explicit ?id=… first if it's in the queue.
+          if (requestedId && rows.some((row) => row.id === requestedId)) {
+            return requestedId;
+          }
           if (prev && rows.some((row) => row.id === prev)) return prev;
           return rows[0].id;
         });
@@ -209,7 +216,7 @@ export default function FlagsPage() {
         setSelectedApplicationId("");
       }
     },
-    [],
+    [requestedId],
   );
 
   const loadFlagContext = async (applicationId: string) => {

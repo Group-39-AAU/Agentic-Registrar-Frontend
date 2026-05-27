@@ -670,10 +670,12 @@ function RegisteredCoursesPageInner() {
 
       <PortalFooter />
 
-      {/* Floating AI advisor — appears only once the student has a real
-          term context. Lets them ask "what should I take?" before they
-          actually submit the registration. */}
-      {termId ? <AdvisoryConsultPanel termId={termId} /> : null}
+      {/* Floating AI advisor — only when the term is open and the student
+          has not yet registered. Once registered (or window is closed),
+          the pre-registration consult is no longer applicable. */}
+      {termId && isOpen && !isRegistered ? (
+        <AdvisoryConsultPanel termId={termId} />
+      ) : null}
     </div>
   );
 }

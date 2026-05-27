@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  ApiError,
   consultPreRegistration,
   type AdvisoryRecommendation,
 } from "@/lib/api";
@@ -39,19 +38,8 @@ export default function AdvisoryConsultPanel({ termId }: Props) {
     try {
       const data = await consultPreRegistration(termId);
       setRecommendation(data);
-    } catch (err: unknown) {
-      let message: string;
-      if (err instanceof ApiError) {
-        message =
-          err.message && err.message !== "Request failed"
-            ? `${err.status}: ${err.message}`
-            : `Request failed with status ${err.status}`;
-      } else if (err instanceof Error) {
-        message = err.message;
-      } else {
-        message = "Could not reach the advisor.";
-      }
-      setError(message);
+    } catch {
+      setError("Agent is unavailable, try again.");
     } finally {
       setLoading(false);
     }
