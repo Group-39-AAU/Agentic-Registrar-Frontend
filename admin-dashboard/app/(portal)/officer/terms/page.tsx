@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useCallback, useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -66,6 +67,7 @@ async function toggleAt(path: string): Promise<void> {
 }
 
 export default function OfficerTermsPage() {
+  usePageTitle("Terms");
   const [academicTerms, setAcademicTerms] = useState<AcademicTerm[] | null>(null);
   const [admissionTerms, setAdmissionTerms] = useState<AdmissionTerm[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

@@ -2,6 +2,7 @@
 
 import { JsonResult, RequestState, Section, callApi, initialState } from "@/components/ApiHelpers";
 import Pagination from "@/components/Pagination";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useEffect, useMemo, useState } from "react";
 
 type AdmissionTerm = {
@@ -22,6 +23,7 @@ function toTermText(value: unknown): string {
 }
 
 export default function RankingPage() {
+  usePageTitle("Ranking");
   const [category, setCategory] = useState("ALL");
   const [terms, setTerms] = useState<AdmissionTerm[]>([]);
   const [termsLoading, setTermsLoading] = useState(false);

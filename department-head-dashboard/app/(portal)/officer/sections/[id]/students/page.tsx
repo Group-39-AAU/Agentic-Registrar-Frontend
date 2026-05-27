@@ -8,8 +8,10 @@ import {
   useSectionCtx,
   type StudentResponse,
 } from "../shared";
+import { usePageTitle } from "@/components/usePageTitle";
 
 export default function SectionStudentsPage() {
+  usePageTitle("Section Students");
   const { sectionId } = useSectionCtx();
   const [students, setStudents] = useState<StudentResponse[]>([]);
   const [loading, setLoading] = useState(true);

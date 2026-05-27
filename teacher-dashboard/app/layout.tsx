@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agentic Registrar — Teacher Portal",
+  title: {
+    default: "Teacher Portal | Addis Ababa University",
+    template: "%s | Addis Ababa University",
+  },
   description: "Course grade entry, submissions, and review for instructors.",
 };
 

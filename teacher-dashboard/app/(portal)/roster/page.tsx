@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import RosterViewClient from "@/components/RosterViewClient";
+
+export const metadata: Metadata = { title: "Roster" };
 
 export default function RosterPage() {
   return (

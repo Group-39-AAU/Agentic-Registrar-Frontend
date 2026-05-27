@@ -1,8 +1,10 @@
 "use client";
 
 import { WeeklyGrid, useSectionCtx } from "../shared";
+import { usePageTitle } from "@/components/usePageTitle";
 
 export default function SectionSchedulePage() {
+  usePageTitle("Section Schedule");
   const { schedule, scheduleLoading, scheduleError } = useSectionCtx();
 
   return (

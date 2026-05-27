@@ -39,10 +39,11 @@ export default function PortalLoginForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
-  // Format: PREFIX/<digits>/<2-digit year>, e.g. UGR/14/14 or UGR/12345/14.
-  // The middle segment is variable-length (sentinel-style IDs like UGR/9999/14
-  // and real IDs like UGR/6400/14 must both pass).
-  const idPattern = /^[A-Za-z]{3}\/\d+\/\d{2}$/;
+  // Format: letters/digits/digits. We only check the shape — prefix length,
+  // middle-segment length, and year suffix length are all variable — and we
+  // leave canonicalisation (case-folding the prefix to UPPERCASE) to the
+  // backend, which compares student IDs case-insensitively.
+  const idPattern = /^[A-Za-z]+\/\d+\/\d+$/;
 
   function resetToLogin(notice?: string) {
     setStage("login");
@@ -61,7 +62,7 @@ export default function PortalLoginForm() {
     setSuccessNotice(null);
 
     if (!idPattern.test(username.trim())) {
-      setError("ID format must be like UGR/<digits>/YY.");
+      setError("ID must look like letters/digits/digits (e.g. UGR/6550/19).");
       return;
     }
     if (password.trim().length < 4) {
@@ -71,7 +72,12 @@ export default function PortalLoginForm() {
 
     setBusy(true);
     try {
-      const response = await loginUser({ username, password });
+      // Backend stores student IDs upper-case (e.g. UGR/6550/19); send
+      // the upper-cased form so a user typing "ugr/6550/19" still matches.
+      const response = await loginUser({
+        username: username.trim().toUpperCase(),
+        password,
+      });
       if (response.must_change_password) {
         // Don't persist the token — backend will reject any other call
         // until the password is changed. Hold it in memory and switch

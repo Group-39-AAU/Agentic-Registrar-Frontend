@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePageTitle } from "@/components/usePageTitle";
 
 export default function SubmissionsPage() {
+  usePageTitle("Submissions");
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">

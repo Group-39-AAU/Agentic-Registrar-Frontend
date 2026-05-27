@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import AdminFooter from "@/components/AdminFooter";
+import { usePageTitle } from "@/components/usePageTitle";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -34,6 +35,7 @@ function LoginTopBrand() {
 }
 
 export default function LoginPage() {
+  usePageTitle("Sign in");
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

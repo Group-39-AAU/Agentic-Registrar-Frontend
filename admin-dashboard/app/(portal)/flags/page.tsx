@@ -2,6 +2,7 @@
 
 import { Section } from "@/components/ApiHelpers";
 import Pagination from "@/components/Pagination";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -165,6 +166,7 @@ function initials(row: FlaggedApplication): string {
 
 // ── Page ─────────────────────────────────────────────────────────
 export default function FlagsPage() {
+  usePageTitle("Flagged Review");
   const searchParams = useSearchParams();
   const requestedId = searchParams.get("id") ?? "";
   const [queue, setQueue] = useState<RequestState<FlaggedApplication[]>>(initialState);

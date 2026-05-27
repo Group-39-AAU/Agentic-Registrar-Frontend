@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import CoursesPageClient from "./CoursesPageClient";
+
+export const metadata: Metadata = { title: "My Courses" };
 
 export default function TeacherCoursesPage() {
   return (

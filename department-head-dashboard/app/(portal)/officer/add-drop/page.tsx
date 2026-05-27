@@ -1,6 +1,7 @@
 "use client";
 
 import { Section } from "@/components/ApiHelpers";
+import { usePageTitle } from "@/components/usePageTitle";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -101,6 +102,7 @@ function ActionTag({ action }: { action: AddDropAction }) {
 }
 
 export default function DepartmentHeadAddDropQueuePage() {
+  usePageTitle("Add/Drop Queue");
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [batches, setBatches] = useState<Batch[]>([]);
