@@ -303,6 +303,7 @@ export type GradeBatch = {
   rows: StudentBatchRow[];
 };
 
+/** Fetches the active grade batch for a section/course pair, creating one if none exists. */
 export async function getOrCreateBatch(
   sectionId: string,
   courseId: string,
@@ -372,6 +373,7 @@ export async function submitBatch(
   );
 }
 
+/** Resubmits a flagged batch with a teacher justification for the agent to re-evaluate. */
 export async function justifyBatch(
   batchId: string,
   justification: string,
@@ -410,6 +412,7 @@ export async function listAgentReviews(
 
 // ── UI helpers ───────────────────────────────────────────────────
 
+/** Converts a GradeLetter enum value to its display string (e.g. `"A_PLUS"` → `"A+"`). */
 export function formatLetter(letter: GradeLetter): string {
   switch (letter) {
     case "A_PLUS": return "A+";
@@ -422,11 +425,16 @@ export function formatLetter(letter: GradeLetter): string {
   }
 }
 
+/** Title-cases a term phase string (e.g. `"grading"` → `"Grading"`). */
 export function formatPhase(phase: string): string {
   if (!phase) return phase;
   return phase.charAt(0).toUpperCase() + phase.slice(1).toLowerCase();
 }
 
+/**
+ * Extracts human-readable lines from an `incomplete_grade_submission` error body.
+ * Returns an empty array for any other error shape.
+ */
 export function describeIncomplete(body: unknown): string[] {
   if (!body || typeof body !== "object") return [];
   const b = body as Record<string, unknown>;
