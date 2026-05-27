@@ -10,6 +10,7 @@ type GradeSubmissionStatus =
   | "DRAFT"
   | "SUBMITTED"
   | "FLAGGED"
+  | "AI_UNAVAILABLE"
   | "REJECTED"
   | "AUTHORISED";
 
@@ -83,6 +84,12 @@ const GRADE_STATUS: Record<
     label: "Flagged — review needed",
     title: "The grading agent flagged this batch; review it before authorising.",
     cls: "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]",
+  },
+  AI_UNAVAILABLE: {
+    label: "AI Unavailable",
+    title:
+      "The grading agent could not return a verdict on the last run (LLM unreachable, timed out, or returned an unexpected response). Rerun the agent before authorising.",
+    cls: "border-[#d4c5e8] bg-[#f3eefa] text-[#5b3a87]",
   },
   REJECTED: {
     label: "Returned to instructor",
@@ -259,7 +266,12 @@ export default function OfficerGradingQueuePage() {
     entries.forEach((e) => {
       if (e.status === "SUBMITTED") submitted += 1;
       else if (e.status === "FLAGGED") flagged += 1;
-      if (e.latest_agent_verdict === "PENDING") pendingAgent += 1;
+      if (
+        e.latest_agent_verdict === "PENDING" ||
+        e.status === "AI_UNAVAILABLE"
+      ) {
+        pendingAgent += 1;
+      }
     });
     return { submitted, flagged, pendingAgent, total: entries.length };
   }, [entries]);
@@ -300,14 +312,15 @@ export default function OfficerGradingQueuePage() {
             Batches the GradingMonitorAgent has finished reviewing for your
             department. Open one to see the full packet, then authorise or
             reject. Re-run the agent on any row whose latest verdict is
-            PENDING. Authorised history appears below for reference.
+            PENDING or whose status is AI Unavailable. Authorised history
+            appears below for reference.
           </p>
         </div>
       </div>
 
       <Section
         title="Pending batches"
-        subtitle="Every batch awaiting a decision in your department (SUBMITTED + FLAGGED), oldest first."
+        subtitle="Every batch awaiting a decision in your department (SUBMITTED + FLAGGED + AI Unavailable), oldest first."
       >
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <div>
@@ -454,7 +467,8 @@ export default function OfficerGradingQueuePage() {
                         >
                           Review
                         </button>
-                        {e.latest_agent_verdict === "PENDING" ? (
+                        {e.latest_agent_verdict === "PENDING" ||
+                        e.status === "AI_UNAVAILABLE" ? (
                           <button
                             type="button"
                             onClick={() => void rerunAgent(e.batch_id)}

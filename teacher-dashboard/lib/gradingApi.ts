@@ -266,6 +266,7 @@ export type GradeSubmissionStatus =
   | "DRAFT"
   | "SUBMITTED"
   | "FLAGGED"
+  | "AI_UNAVAILABLE"
   | "REJECTED"
   | "AUTHORISED";
 
@@ -387,6 +388,24 @@ export async function justifyBatch(
 export async function reopenBatch(batchId: string): Promise<GradeBatch> {
   return request<GradeBatch>(
     `/api/v1/courses/grading/batches/${encodeURIComponent(batchId)}/reopen`,
+    { method: "POST" },
+  );
+}
+
+export type AgentRerunResponse = {
+  batch_id: string;
+  new_status: GradeSubmissionStatus;
+  iteration: number;
+  agent_verdict: AgentVerdict;
+  agent_flags: Array<Record<string, unknown>>;
+  agent_reasoning: string;
+};
+
+export async function rerunAgent(
+  batchId: string,
+): Promise<AgentRerunResponse> {
+  return request<AgentRerunResponse>(
+    `/api/v1/courses/grading/batches/${encodeURIComponent(batchId)}/rerun-agent`,
     { method: "POST" },
   );
 }

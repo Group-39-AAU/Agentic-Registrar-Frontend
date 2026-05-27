@@ -11,6 +11,7 @@ type GradeSubmissionStatus =
   | "DRAFT"
   | "SUBMITTED"
   | "FLAGGED"
+  | "AI_UNAVAILABLE"
   | "REJECTED"
   | "AUTHORISED";
 
@@ -184,6 +185,12 @@ const GRADE_STATUS: Record<
     label: "Flagged — review needed",
     title: "The grading agent flagged this batch; review it before authorising.",
     cls: "border-[#f0d9a0] bg-[#fff7e2] text-[#8a5a00]",
+  },
+  AI_UNAVAILABLE: {
+    label: "AI Unavailable",
+    title:
+      "The grading agent could not return a verdict on the last run. Rerun the agent before authorising.",
+    cls: "border-[#d4c5e8] bg-[#f3eefa] text-[#5b3a87]",
   },
   REJECTED: {
     label: "Returned to instructor",
@@ -484,7 +491,8 @@ export default function OfficerGradingBatchDetail() {
               >
                 Reject
               </button>
-              {latestVerdict === "PENDING" && canDecide ? (
+              {(latestVerdict === "PENDING" && canDecide) ||
+              batch.status === "AI_UNAVAILABLE" ? (
                 <button
                   type="button"
                   onClick={() => void rerunAgent()}
@@ -494,9 +502,15 @@ export default function OfficerGradingBatchDetail() {
                   {rerunBusy ? "Rerunning…" : "Rerun agent"}
                 </button>
               ) : null}
-              {!canDecide ? (
+              {!canDecide && batch.status !== "AI_UNAVAILABLE" ? (
                 <span className="self-center text-[12px] italic text-[#5a5a5a]">
                   This batch is finalised — no further DH action is available.
+                </span>
+              ) : null}
+              {batch.status === "AI_UNAVAILABLE" ? (
+                <span className="self-center text-[12px] italic text-[#5b3a87]">
+                  AI reviewer was unavailable on the last run — rerun the agent
+                  before authorising.
                 </span>
               ) : null}
             </div>
