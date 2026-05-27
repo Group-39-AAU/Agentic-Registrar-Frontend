@@ -1093,6 +1093,55 @@ export async function submitApplicationCorrections(
   return data;
 }
 
+export type CorrectionReasoningStep = {
+  label: string;
+  detail: string;
+};
+
+export type CorrectionContext = {
+  officer_note: string | null;
+  agent_summary: string | null;
+  reasoning_steps: CorrectionReasoningStep[];
+};
+
+/** GET /api/v1/undergraduate/applications/{application_id}/correction-context */
+export async function fetchApplicationCorrectionContext(
+  applicationId: string
+): Promise<CorrectionContext> {
+  const token = getStoredAccessToken();
+  if (!token) {
+    throw new ApiError(401, { detail: "Not authenticated" });
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/undergraduate/applications/${encodeURIComponent(applicationId)}/correction-context`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return {
+    officer_note:
+      typeof (data as { officer_note?: unknown }).officer_note === "string"
+        ? ((data as { officer_note: string }).officer_note)
+        : null,
+    agent_summary:
+      typeof (data as { agent_summary?: unknown }).agent_summary === "string"
+        ? ((data as { agent_summary: string }).agent_summary)
+        : null,
+    reasoning_steps: Array.isArray((data as { reasoning_steps?: unknown }).reasoning_steps)
+      ? ((data as { reasoning_steps: unknown[] }).reasoning_steps
+          .filter(
+            (s): s is { label: string; detail: string } =>
+              !!s &&
+              typeof s === "object" &&
+              typeof (s as { label?: unknown }).label === "string" &&
+              typeof (s as { detail?: unknown }).detail === "string",
+          ))
+      : [],
+  };
+}
+
 // /** POST /api/v1/undergraduate/applications/{application_id}/validate */
 // export async function validateUndergraduateApplication(
 //   applicationId: string,

@@ -7,12 +7,14 @@ import {
   ApiError,
   callbackApplicationPayment,
   clearStoredAccessToken,
+  fetchApplicationCorrectionContext,
   fetchEnrollmentByApplicationId,
   fetchTestingCenterCallback,
   fetchUndergraduateApplicationById,
   getStoredAccessToken,
   initiateApplicationPayment,
   submitApplicationCorrections,
+  type CorrectionContext,
   type EnrollmentRecord,
   type PaymentInitiateResponse,
   type TestingCenterCallbackResponse,
@@ -160,6 +162,8 @@ export default function AdmissionDetailClient({
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [correctionSuccessModalOpen, setCorrectionSuccessModalOpen] = useState(false);
+  const [correctionContext, setCorrectionContext] = useState<CorrectionContext | null>(null);
+  const [correctionContextLoading, setCorrectionContextLoading] = useState(false);
 
   const reloadApplication = async () => {
     try {
@@ -253,6 +257,35 @@ export default function AdmissionDetailClient({
       return s === "NATURAL" || s === "SOCIAL" ? s : "";
     });
   }, [data]);
+
+  // Fetch the correction-reasoning bundle (officer note + agent
+  // summary + humanized reasoning steps) so the student can see WHY
+  // changes were requested. Only runs when status is CHANGES_REQUESTED.
+  useEffect(() => {
+    if (!data) {
+      setCorrectionContext(null);
+      return;
+    }
+    if ((data.current_status ?? "").toUpperCase() !== "CHANGES_REQUESTED") {
+      setCorrectionContext(null);
+      return;
+    }
+    let cancelled = false;
+    setCorrectionContextLoading(true);
+    (async () => {
+      try {
+        const ctx = await fetchApplicationCorrectionContext(applicationId);
+        if (!cancelled) setCorrectionContext(ctx);
+      } catch {
+        if (!cancelled) setCorrectionContext(null);
+      } finally {
+        if (!cancelled) setCorrectionContextLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, data]);
 
   useEffect(() => {
     if (!paymentModalOpen) return;
@@ -541,6 +574,70 @@ export default function AdmissionDetailClient({
               You are requested to enter the following informations correctly.
             </p>
           </div>
+
+          {correctionContextLoading ? (
+            <div className="border-b border-[#f0dfbf] px-8 py-4 text-[12.5px] text-[#7a5a2c]">
+              Loading the reason for requested changes…
+            </div>
+          ) : correctionContext &&
+            (correctionContext.officer_note ||
+              correctionContext.agent_summary ||
+              correctionContext.reasoning_steps.length > 0) ? (
+            <div className="space-y-4 border-b border-[#f0dfbf] px-8 py-5">
+              <div>
+                <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#9a5b00]">
+                  Why we requested changes
+                </h3>
+                <p className="mt-1 text-[12.5px] text-[#7a5a2c]">
+                  Use this overview to understand what to fix before
+                  resubmitting.
+                </p>
+              </div>
+
+              {correctionContext.officer_note ? (
+                <div className="rounded-md border border-[#e6d3a8] bg-white px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9a5b00]">
+                    Officer&apos;s note
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-[#1a1a1a]">
+                    {correctionContext.officer_note}
+                  </p>
+                </div>
+              ) : null}
+
+              {correctionContext.agent_summary ? (
+                <div className="rounded-md border border-[#e6d3a8] bg-white px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9a5b00]">
+                    Review summary
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-[#1a1a1a]">
+                    {correctionContext.agent_summary}
+                  </p>
+                </div>
+              ) : null}
+
+              {correctionContext.reasoning_steps.length > 0 ? (
+                <div className="rounded-md border border-[#e6d3a8] bg-white px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9a5b00]">
+                    What the review checked
+                  </p>
+                  <ul className="mt-2 space-y-3">
+                    {correctionContext.reasoning_steps.map((step, idx) => (
+                      <li key={`${step.label}-${idx}`}>
+                        <p className="text-[13px] font-semibold text-[#1a1a1a]">
+                          {step.label}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-[#3a3a3a]">
+                          {step.detail}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="space-y-4 px-8 py-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
